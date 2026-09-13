@@ -1,0 +1,105 @@
+/*
+ * Scoped, committed Tailwind output for the floating composer. Keeping the
+ * generated utilities local avoids adding Tailwind's reset to the workbench.
+ */
+.floating-composer-host {
+	position: absolute;
+	z-index: 50;
+	inset-inline-start: 50%;
+	bottom: var(--vscode-spacing-size320, 32px);
+	width: min(960px, calc(100% - var(--vscode-spacing-size320, 32px)));
+	transform: translateX(-50%);
+	touch-action: none;
+}
+
+.floating-composer-container {
+	position: relative;
+}
+
+.floating-composer-host.dragging {
+	cursor: grabbing;
+	user-select: none;
+}
+
+.floating-composer-host form {
+	cursor: grab;
+}
+
+.floating-composer-host .flex { display: flex; }
+.floating-composer-host .inline-flex { display: inline-flex; }
+.floating-composer-host .flex-col { flex-direction: column; }
+.floating-composer-host .w-full { box-sizing: border-box; width: 100%; }
+.floating-composer-host .min-h-10 { min-height: var(--vscode-spacing-size400, 40px); }
+.floating-composer-host .min-h-8 { min-height: var(--vscode-spacing-size320, 32px); }
+.floating-composer-host .h-8 { height: var(--vscode-spacing-size320, 32px); }
+.floating-composer-host .size-8 { width: var(--vscode-spacing-size320, 32px); height: var(--vscode-spacing-size320, 32px); }
+.floating-composer-host .max-w-40 { max-width: calc(var(--vscode-spacing-size400, 40px) * 4); }
+.floating-composer-host .shrink-0 { flex-shrink: 0; }
+.floating-composer-host .resize-none { resize: none; }
+.floating-composer-host .truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.floating-composer-host .items-end { align-items: flex-end; }
+.floating-composer-host .items-center { align-items: center; }
+.floating-composer-host .justify-center { justify-content: center; }
+.floating-composer-host .justify-between { justify-content: space-between; }
+.floating-composer-host .gap-1 { gap: var(--vscode-spacing-size40, 4px); }
+.floating-composer-host .gap-2 { gap: var(--vscode-spacing-size80, 8px); }
+.floating-composer-host .rounded-full { border-radius: var(--vscode-cornerRadius-circle, 9999px); }
+.floating-composer-host .rounded-outer { border-radius: var(--vscode-cornerRadius-large, 8px); }
+.floating-composer-host .border { border: var(--vscode-strokeThickness, 1px) solid var(--vscode-agentsChatInput-border, var(--vscode-widget-border, transparent)); }
+.floating-composer-host .bg-transparent { background-color: transparent; }
+.floating-composer-host .bg-card { background-color: var(--vscode-agentsChatInput-background, var(--vscode-input-background)); }
+.floating-composer-host .bg-primary { background-color: var(--vscode-button-background); }
+.floating-composer-host .bg-accent { background-color: var(--vscode-toolbar-hoverBackground); }
+.floating-composer-host .text-foreground { color: var(--vscode-agentsChatInput-foreground, var(--vscode-input-foreground)); }
+.floating-composer-host .text-muted-foreground { color: var(--vscode-descriptionForeground); }
+.floating-composer-host .text-primary-foreground { color: var(--vscode-button-foreground); }
+.floating-composer-host .text-label { font-size: var(--vscode-fontSize-label1, 12px); }
+.floating-composer-host .placeholder\:text-muted-foreground::placeholder { color: var(--vscode-descriptionForeground); }
+.floating-composer-host .p-2 { padding: var(--vscode-spacing-size80, 8px); }
+.floating-composer-host .px-3 { padding-inline: var(--vscode-spacing-size120, 12px); }
+.floating-composer-host .shadow-overlay { box-shadow: 0 8px 24px var(--vscode-widget-shadow, transparent); }
+.floating-composer-host .transition-colors { transition: color 120ms ease, background-color 120ms ease, border-color 120ms ease; }
+.floating-composer-host .focus-visible\:outline-none:focus-visible { outline: var(--vscode-strokeThickness, 1px) solid var(--vscode-focusBorder); outline-offset: 2px; }
+.floating-composer-host .hover\:bg-accent:hover { background-color: var(--vscode-toolbar-hoverBackground); }
+.floating-composer-host .hover\:bg-primary-hover:hover { background-color: var(--vscode-button-hoverBackground); }
+.floating-composer-host .hover\:text-foreground:hover { color: var(--vscode-agentsChatInput-foreground, var(--vscode-input-foreground)); }
+.floating-composer-host .disabled\:pointer-events-none:disabled { pointer-events: none; }
+.floating-composer-host .disabled\:cursor-not-allowed:disabled { cursor: not-allowed; }
+.floating-composer-host .disabled\:opacity-50:disabled { opacity: 0.5; }
+.floating-composer-host textarea {
+	max-height: calc(var(--vscode-spacing-size320, 32px) * 4 + var(--vscode-spacing-size160, 16px));
+	padding: var(--vscode-spacing-size80, 8px) var(--vscode-spacing-size40, 4px);
+	border: 0;
+	font: inherit;
+	line-height: var(--vscode-spacing-size200, 20px);
+	overflow-y: auto;
+	touch-action: auto;
+	cursor: text;
+}
+
+.floating-composer-host button {
+	border: 0;
+	background-color: transparent;
+	color: inherit;
+	font: inherit;
+	cursor: pointer;
+	touch-action: manipulation;
+}
+
+.floating-composer-host .sr-only {
+	position: absolute;
+	width: 1px;
+	height: 1px;
+	padding: 0;
+	margin: -1px;
+	overflow: hidden;
+	clip: rect(0, 0, 0, 0);
+	white-space: nowrap;
+	border: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.floating-composer-host .transition-colors {
+		transition: none;
+	}
+}

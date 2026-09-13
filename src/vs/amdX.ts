@@ -91,10 +91,15 @@ class AMDModuleImporter {
 		}
 	}
 
-	public async load<T>(scriptSrc: string): Promise<T> {
+	public async load<T>(scriptSrc: string, dependencies?: Readonly<Record<string, unknown>>): Promise<T> {
 		this._initialize();
 
 		if (this._state === AMDModuleImporterState.InitializedExternal) {
+			if (dependencies) {
+				for (const [id, value] of Object.entries(dependencies)) {
+					globalThis.define(id, [], () => value);
+				}
+			}
 			return new Promise<T>(resolve => {
 				const tmpModuleId = generateUuid();
 				globalThis.define(tmpModuleId, [scriptSrc], function (moduleResult: T) {
@@ -118,6 +123,8 @@ class AMDModuleImporter {
 			for (const mod of defineCall.dependencies) {
 				if (mod === 'exports') {
 					dependencyObjs.push(exports);
+				} else if (dependencies && Object.hasOwn(dependencies, mod)) {
+					dependencyObjs.push(dependencies[mod]);
 				} else {
 					dependencyModules.push(mod);
 				}
@@ -203,11 +210,11 @@ const cache = new Map<string, Promise<any>>();
 
 /**
  * Utility for importing an AMD node module. This util supports AMD and ESM contexts and should be used while the ESM adoption
- * is on its way.
+ * is on its way. The optional dependency map supports UMD bundles that declare other AMD modules.
  *
  * e.g. pass in `vscode-textmate/release/main.js`
  */
-export async function importAMDNodeModule<T>(nodeModuleName: string, pathInsideNodeModule: string, isBuilt?: boolean): Promise<T> {
+export async function importAMDNodeModule<T>(nodeModuleName: string, pathInsideNodeModule: string, isBuilt?: boolean, dependencies?: Readonly<Record<string, unknown>>): Promise<T> {
 	if (isBuilt === undefined) {
 		const product = globalThis._VSCODE_PRODUCT_JSON as unknown as IProductConfiguration;
 		isBuilt = Boolean((product ?? globalThis.vscode?.context?.configuration()?.product)?.commit);
@@ -228,7 +235,7 @@ export async function importAMDNodeModule<T>(nodeModuleName: string, pathInsideN
 		const resourcePath: AppResourcePath = `${actualNodeModulesPath}/${nodeModulePath}`;
 		scriptSrc = FileAccess.asBrowserUri(resourcePath).toString(true);
 	}
-	const result = AMDModuleImporter.INSTANCE.load<T>(scriptSrc);
+	const result = AMDModuleImporter.INSTANCE.load<T>(scriptSrc, dependencies);
 	cache.set(nodeModulePath, result);
 	return result;
 }
