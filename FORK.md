@@ -35,8 +35,8 @@ the list below, then run `npm run valid-layers-check` and `npm run typecheck-cli
 | `src/vs/workbench/workbench.desktop.main.ts` | One import of `contrib/latent/electron-browser/latent.contribution.ts`. |
 | `src/vs/workbench/api/common/extHostChatAgents2.ts` | Inserted fallback to a participant-provided language model when no default model exists. |
 | `src/vs/platform/extensions/common/extensions.ts` | Added the optional `languageModelChatProviders` contribution field read by that fallback. |
-| `src/vs/workbench/contrib/chat/browser/chat.contribution.ts` | Imports the floating composer host (fork feature added on `main`). |
-| `src/vs/workbench/contrib/chat/browser/widgetHosts/floating/*` | Fork-owned floating composer; lives in an upstream folder, rename if upstream ever adds a file with that name. |
+| `src/vs/workbench/contrib/chat/browser/widget/input/chatInputPart.ts` | Composer plugin hooks used by the compact and floating composers. |
+| `src/vs/workbench/contrib/chat/browser/widget/input/compactComposer.ts`, `src/vs/workbench/contrib/chat/common/composer/*` | Fork-owned composer model and compact renderer; they live in upstream folders because `chatInputPart.ts` depends on them. |
 | `build/gulpfile.extensions.ts`, `build/npm/dirs.ts` | Register `extensions/studybuddy` with the build. |
 | `build/lib/i18n.resources.json` | Register fork folders for localisation. |
 | `package.json`, `package-lock.json` | Add the `selection-hook` native dependency. |
@@ -46,4 +46,5 @@ the list below, then run `npm run valid-layers-check` and `npm run typecheck-cli
 
 - `src/vs/code/electron-main/latent.contribution.ts`: main-process services and channels.
 - `src/vs/workbench/contrib/latent/electron-browser/latent.contribution.ts`: workbench services and contributions.
+- `src/vs/workbench/contrib/latent/browser/floatingComposer`: the floating chat composer.
 - `extensions/studybuddy`: the Study Buddy extension.

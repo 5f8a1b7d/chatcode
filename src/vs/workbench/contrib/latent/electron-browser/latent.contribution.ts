@@ -17,4 +17,7 @@
 // StudyBuddy system-wide text selection
 import '../../studyBuddySelection/electron-browser/studyBuddySelection.contribution.js';
 
+// Floating chat composer
+import '../browser/floatingComposer/floatingComposerHost.js';
+
 //#endregion
