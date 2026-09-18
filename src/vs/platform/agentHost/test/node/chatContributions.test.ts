@@ -26,7 +26,7 @@ import { ISessionDataService } from '../../common/sessionDataService.js';
 import { ActionType } from '../../common/state/sessionActions.js';
 import { SessionConfigKey } from '../../common/sessionConfigKeys.js';
 import { ChatOriginKind } from '../../common/state/protocol/state.js';
-import { AH_META_IS_ARCHIVED_DB_KEY, AH_META_IS_READ_DB_KEY, buildChatUri, buildDefaultChatUri, buildSubagentChatUri, ChatInteractivity, MessageKind, PendingMessageKind, ResponsePartKind, SessionStatus, TurnState, type ISessionGitHubState, type Message, type PendingMessage, type Turn } from '../../common/state/sessionState.js';
+import { AH_META_AUTO_ARCHIVED_AT_DB_KEY, AH_META_IS_ARCHIVED_DB_KEY, AH_META_IS_READ_DB_KEY, buildChatUri, buildDefaultChatUri, buildSubagentChatUri, ChatInteractivity, MessageKind, PendingMessageKind, ResponsePartKind, SessionStatus, TurnState, type ISessionGitHubState, type Message, type PendingMessage, type Turn } from '../../common/state/sessionState.js';
 import { IAgentConfigurationService } from '../../node/agentConfigurationService.js';
 import { AgentHostClientConnectionService, IAgentHostClientConnectionService } from '../../node/agentHostClientConnectionService.js';
 import { AgentHostChatContributions } from '../../node/agentHostChatContributionsService.js';
@@ -109,6 +109,7 @@ class RecordingGitStateService implements IAgentHostGitStateService {
 	constructor(private readonly _observed: string[] | undefined) { }
 
 	async refreshSessionGitState(_sessionKey: string, _workingDirectory?: URI): Promise<void> { }
+	getMaterializedWorktreeMeta(_sessionKey: string, _branchName: string): undefined { return undefined; }
 	async resolveSessionBaseBranchName(_sessionKey: string): Promise<string | undefined> { return undefined; }
 	async setSessionGitHubState(_sessionKey: string, _state: ISessionGitHubState): Promise<void> { }
 	async recordSessionMerge(_sessionKey: string, _commit: string): Promise<void> { }
@@ -1494,11 +1495,15 @@ suite('AgentHostChatContributions', () => {
 
 		assert.deepStrictEqual({
 			chatTitle: titles.stateManager.getChatState(titles.peerChat)?.title,
+			chatLocalTitle: await titles.database.getMetadata(SESSION_CUSTOM_TITLE_KEY),
+			chatLocalSource: await titles.database.getMetadata(SESSION_CUSTOM_TITLE_SOURCE_KEY),
 			persistedTitle: await titles.database.getMetadata(customChatTitleMetadataKey(titles.peerChat)),
 			persistedSource: await titles.database.getMetadata(customChatTitleSourceMetadataKey(titles.peerChat)),
 			renamedTitles: titles.titleController.renamedTitles,
 		}, {
 			chatTitle: 'Renamed peer',
+			chatLocalTitle: 'Renamed peer',
+			chatLocalSource: AGENT_HOST_TITLE_SOURCE_USER,
 			persistedTitle: 'Renamed peer',
 			persistedSource: AGENT_HOST_TITLE_SOURCE_USER,
 			renamedTitles: [{ channel: titles.session, chatChannel: titles.peerChat }],
@@ -1675,6 +1680,30 @@ suite('AgentHostChatContributions', () => {
 			isArchived: undefined,
 			configValues: JSON.stringify({ mode: 'plan', autoApprove: 'default' }),
 		});
+	});
+
+	test('persists sandbox selections through the session metadata path', async () => {
+		const contributions = createBuiltInContributions(disposables);
+		const values = {
+			[SessionConfigKey.SandboxEnabled]: 'off',
+			[SessionConfigKey.ShellInitScripts]: [{ shell: 'bash', script: 'export TRANSIENT=1' }],
+		};
+		contributions.stateManager.setSessionConfig(contributions.session, {
+			schema: { type: 'object', properties: {} }, values,
+		});
+		contributions.service.didDispatchAction(dispatchedAction(contributions.session, contributions.session, { type: ActionType.SessionConfigChanged, config: values }));
+		await Promise.resolve();
+		assert.strictEqual(await contributions.database.getMetadata('configValues'), JSON.stringify({ [SessionConfigKey.SandboxEnabled]: 'off' }));
+	});
+
+	test('clears automatic archive time when a session is unarchived', async () => {
+		const contributions = createBuiltInContributions(disposables);
+		await contributions.database.setMetadata(AH_META_AUTO_ARCHIVED_AT_DB_KEY, String(Date.now()));
+
+		contributions.service.didDispatchAction(dispatchedAction(contributions.session, contributions.session, { type: ActionType.SessionIsArchivedChanged, isArchived: false }));
+		await Promise.resolve();
+
+		assert.strictEqual(await contributions.database.getMetadata(AH_META_AUTO_ARCHIVED_AT_DB_KEY), '');
 	});
 
 	test('persists turn usage from envelopes but skips subagent chats', async () => {
@@ -2292,5 +2321,39 @@ suite('AgentHostChatContributions', () => {
 				draft,
 			},
 		});
+	});
+
+	test('hydrates a chat-local title before the session compatibility mirror', async () => {
+		const contributions = createBuiltInContributions(disposables);
+		const chat = buildChatUri(contributions.session, 'peer');
+		await contributions.database.setMetadata(SESSION_CUSTOM_TITLE_KEY, 'Chat-local title');
+		await contributions.database.setMetadata(customChatTitleMetadataKey(chat), 'Legacy title');
+
+		assert.deepStrictEqual(await contributions.service.hydrateChat({ session: contributions.session, chat }, {}), {
+			title: 'Chat-local title',
+		});
+	});
+
+	test('accepts a cached chat title without reading title metadata', async () => {
+		const contributions = createBuiltInContributions(disposables);
+		const chat = buildChatUri(contributions.session, 'peer');
+		let metadataReads = 0;
+		const getMetadata = contributions.database.getMetadata.bind(contributions.database);
+		contributions.database.getMetadata = async key => {
+			metadataReads++;
+			return getMetadata(key);
+		};
+
+		try {
+			assert.deepStrictEqual({
+				restored: await contributions.service.hydrateChat({ session: contributions.session, chat }, { title: 'Cached title' }),
+				metadataReads,
+			}, {
+				restored: { title: 'Cached title' },
+				metadataReads: 0,
+			});
+		} finally {
+			contributions.database.getMetadata = getMetadata;
+		}
 	});
 });

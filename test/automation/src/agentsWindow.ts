@@ -12,10 +12,11 @@ const AGENTS_WORKBENCH = '.agent-sessions-workbench';
 const NEW_SESSION_VIEW = '.sessions-chat-widget .new-chat-widget-container';
 const SESSION_TYPE_PICKER = '.sessions-chat-session-type-picker .action-label';
 const SESSION_TYPE_PICKER_VISIBLE = `${SESSION_TYPE_PICKER}:not(.hidden)`;
+const WORKSPACE_PICKER = `${NEW_SESSION_VIEW} .sessions-workspace-picker-trigger > .action-label`;
+const WORKSPACE_PICKER_DEV_CONTAINER_ROW = '.action-widget .sessions-new-chat-picker-list .monaco-list-row.action:has(.action-list-submenu-indicator.has-submenu):not([aria-label="Remote"])';
+const WORKSPACE_PICKER_SUBMENU_ROW = '.action-list-submenu-panel .monaco-list-row.action';
 const NEW_CHAT_EDITOR = `${NEW_SESSION_VIEW} .sessions-chat-editor .monaco-editor[role="code"]`;
 const SEND_BUTTON_ENABLED = `${NEW_SESSION_VIEW} .sessions-chat-send-button .monaco-button:not(.disabled)`;
-const DEV_CONTAINER_CHECKBOX = `${NEW_SESSION_VIEW} .sessions-chat-dev-container-checkbox .monaco-checkbox`;
-const NEW_WORKTREE_CHECKBOX = `${NEW_SESSION_VIEW} .sessions-chat-isolation-checkbox .monaco-checkbox`;
 const ACTIVE_SESSION = `${AGENTS_WORKBENCH} .session-view.is-active`;
 const ACTIVE_SESSION_INPUT_EDITOR = `${ACTIVE_SESSION} .interactive-session .interactive-input-part .monaco-editor[role="code"]`;
 const ACTIVE_SESSION_SEND_BUTTON_ENABLED = `${ACTIVE_SESSION} .interactive-session .chat-input-toolbars > .chat-execute-toolbar .monaco-action-bar .action-item:not(.disabled) > .action-label.codicon-arrow-up-compact`;
@@ -117,36 +118,112 @@ export class AgentsWindow {
 		await this.code.waitForElement(ACTIVE_SESSION_INPUT_EDITOR, undefined, retryCount);
 	}
 
-	async selectDevContainer(): Promise<void> {
+	async connectSSHHost(options: { name: string; host: string; port: number; username: string; password: string; fingerprint: string }, workspacePath: string): Promise<void> {
 		const page = this.code.driver.currentPage;
-		const devContainer = page.locator(DEV_CONTAINER_CHECKBOX).first();
-		const newWorktree = page.locator(NEW_WORKTREE_CHECKBOX).first();
+		await this.quickaccess.runCommand('workbench.action.sessions.connectViaSSH', { keepOpen: true });
+		await this.fillQuickInput('Connect via SSH', `${options.username}@${options.host}:${options.port}`);
+		const authPicker = page.locator('.quick-input-widget:visible').filter({
+			has: page.locator('.quick-input-title', { hasText: 'Authentication Method' }),
+		});
+		await authPicker.getByText('Password', { exact: true }).waitFor();
+		// Draft initialization can move focus back to the composer while authentication is open.
+		await page.locator(NEW_CHAT_EDITOR).click();
+		await authPicker.getByText('Password', { exact: true }).click();
+		await this.fillQuickInput('SSH Password', options.password);
+		await this.fillQuickInput('Name Remote', options.name);
+		const trustDialog = page.locator('.monaco-dialog-box').filter({ hasText: 'The authenticity of host' });
+		await trustDialog.getByText(options.fingerprint, { exact: false }).waitFor({ timeout: 30_000 });
+		await trustDialog.getByRole('button', { name: 'Connect', exact: true }).click();
+		await this.selectRemoteFolder(options.name, workspacePath);
+	}
+
+	async connectTunnelHost(name: string, workspacePath: string): Promise<void> {
+		const page = this.code.driver.currentPage;
+		await this.quickaccess.runCommand('workbench.action.sessions.connectViaTunnel', { keepOpen: true });
+		await page.locator('.quick-input-widget:visible .quick-input-list .monaco-list-row').filter({
+			has: page.getByText(name, { exact: true }),
+		}).click({ timeout: 120_000 });
+		await this.selectRemoteFolder(name, workspacePath);
+	}
+
+	async connectWSLHost(distro: string, workspacePath: string): Promise<void> {
+		const page = this.code.driver.currentPage;
+		await this.quickaccess.runCommand('workbench.action.sessions.connectViaWSL', { keepOpen: true });
+		const distroPicker = page.locator('.quick-input-widget:visible').filter({ has: page.locator('.quick-input-title', { hasText: 'Connect via WSL' }) });
+		const folderPicker = page.locator('.quick-input-widget:visible').filter({ has: page.locator('.quick-input-title', { hasText: `Select Folder on ${distro}` }) });
+		await distroPicker.or(folderPicker).first().waitFor({ timeout: 120_000 });
+		if (await distroPicker.isVisible()) {
+			await distroPicker.locator('.quick-input-list .monaco-list-row').filter({
+				has: page.getByText(distro, { exact: true }),
+			}).click({ timeout: 30_000 });
+		}
+		await this.selectRemoteFolder(distro, workspacePath);
+	}
+
+	private async fillQuickInput(title: string, value: string): Promise<void> {
+		const page = this.code.driver.currentPage;
+		const widget = page.locator('.quick-input-widget:visible').filter({ has: page.locator('.quick-input-title', { hasText: title }) });
+		const input = widget.locator('.quick-input-box input');
+		await input.fill(value, { timeout: 30_000 });
+		await input.press('Enter');
+	}
+
+	private async selectRemoteFolder(hostName: string, workspacePath: string): Promise<void> {
+		const page = this.code.driver.currentPage;
+		const widget = page.locator('.quick-input-widget:visible').filter({
+			has: page.locator('.quick-input-title', { hasText: `Select Folder on ${hostName}` }),
+		});
+		const input = widget.locator('.quick-input-box input');
+		await widget.locator('.quick-input-list .monaco-list-row').first().waitFor({ timeout: 30_000 });
+		await input.fill(workspacePath.replace(/\\/g, '/') + '/', { timeout: 120_000 });
+		await widget.getByText('.devcontainer', { exact: true }).waitFor({ timeout: 30_000 });
+		await widget.locator('.quick-input-progress[aria-hidden="true"]').waitFor({ state: 'attached', timeout: 30_000 });
+		await input.press('Enter');
+		await widget.waitFor({ state: 'hidden', timeout: 30_000 });
+		await page.locator(WORKSPACE_PICKER).filter({ hasText: hostName }).waitFor({ timeout: 30_000 });
+	}
+
+	async selectDevContainer(workspaceLabel?: string): Promise<void> {
+		const page = this.code.driver.currentPage;
+		const picker = page.locator(WORKSPACE_PICKER).first();
+		const devContainerRow = page.locator(WORKSPACE_PICKER_SUBMENU_ROW, { hasText: 'Use Dev Container' }).first();
 		const deadline = Date.now() + 120_000;
+		let lastError: unknown;
+
 		while (Date.now() < deadline) {
-			if (await newWorktree.count() > 0 && await newWorktree.getAttribute('aria-checked') === 'true') {
-				await newWorktree.click();
-				continue;
+			if (await picker.getAttribute('aria-expanded') === 'true') {
+				await page.keyboard.press('Escape');
 			}
-			if (await devContainer.count() > 0 && await devContainer.getAttribute('aria-disabled') !== 'true') {
-				break;
+			try {
+				await picker.click();
+				if (workspaceLabel) {
+					const remoteRow = page.locator('.action-widget .sessions-new-chat-picker-list .monaco-list-row.action[aria-label="Remote"]');
+					if (await remoteRow.isVisible()) {
+						await remoteRow.locator('.action-list-submenu-indicator.has-submenu').click();
+					}
+				}
+				const workspaceRow = workspaceLabel
+					? page.locator('.action-widget .monaco-list-row.action, .action-list-submenu-panel .monaco-list-row.action').filter({ has: page.getByText(workspaceLabel, { exact: true }) }).first()
+					: page.locator(WORKSPACE_PICKER_DEV_CONTAINER_ROW).first();
+				await workspaceRow.waitFor({ state: 'visible', timeout: 5_000 });
+				await workspaceRow.locator('.action-list-submenu-indicator.has-submenu').click();
+				await devContainerRow.waitFor({ state: 'visible', timeout: 5_000 });
+				await devContainerRow.click();
+				await page.waitForFunction(
+					selector => document.querySelector(selector)?.textContent?.includes('Dev Container') === true,
+					WORKSPACE_PICKER,
+					{ timeout: 15_000 },
+				);
+				return;
+			} catch (error) {
+				lastError = error;
+				if (await picker.getAttribute('aria-expanded') === 'true') {
+					await page.keyboard.press('Escape');
+				}
+				await new Promise(resolve => setTimeout(resolve, 500));
 			}
-			await new Promise(resolve => setTimeout(resolve, 100));
 		}
-		if (await devContainer.count() === 0) {
-			throw new Error('Timed out waiting for Dev Container checkbox to appear');
-		}
-		if (await devContainer.getAttribute('aria-disabled') === 'true') {
-			throw new Error('Timed out waiting for Dev Container checkbox to become enabled');
-		}
-		if (await devContainer.getAttribute('aria-checked') !== 'true') {
-			await devContainer.click();
-		}
-		while (await devContainer.getAttribute('aria-checked') !== 'true') {
-			if (Date.now() >= deadline) {
-				throw new Error('Timed out waiting for Dev Container checkbox to become checked');
-			}
-			await new Promise(resolve => setTimeout(resolve, 100));
-		}
+		throw new Error(`Timed out selecting Use Dev Container from the workspace picker. Last error: ${lastError instanceof Error ? lastError.message : String(lastError)}`);
 	}
 
 	private async isSessionTypeSelected(label: string): Promise<boolean> {

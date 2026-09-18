@@ -6,11 +6,12 @@
 import assert from 'assert';
 import * as fs from 'fs';
 import { tmpdir } from 'os';
-import { retry, timeout } from '../../../../../../base/common/async.js';
+import { retry } from '../../../../../../base/common/async.js';
 import { join } from '../../../../../../base/common/path.js';
 import { URI } from '../../../../../../base/common/uri.js';
 import { generateUuid } from '../../../../../../base/common/uuid.js';
 import { SessionConfigKey } from '../../../../common/sessionConfigKeys.js';
+import { parseSessionDbUri } from '../../../../common/sessionDbUri.js';
 import type { ListSessionsResult, ResourceReadResult, SubscribeResult } from '../../../../common/state/protocol/commands.js';
 import { ContentEncoding } from '../../../../common/state/protocol/common/commands.js';
 import type { SessionSummaryChangedParams } from '../../../../common/state/protocol/channels-root/notifications.js';
@@ -71,29 +72,37 @@ export function defineSessionPersistenceTests(context: IAgentHostE2ETestContext)
 		}));
 	}
 
+	function unsubscribeSessionAndChats(sessionUri: string, additionalChats: readonly string[]): void {
+		for (const chat of additionalChats) {
+			context.client.notify('unsubscribe', { channel: chat });
+		}
+		context.client.notify('unsubscribe', { channel: buildDefaultChatUri(sessionUri) });
+		context.client.notify('unsubscribe', { channel: sessionUri });
+	}
+
 	async function releaseAndRestoreSession(sessionUri: string, additionalChats: readonly string[] = []): Promise<void> {
 		const before = await fetchSessionWithChat(context.client, sessionUri);
 		const beforeResponsePartIds = responsePartIds(before.turns);
 		const beforeTurns = durableTurnContent(before.turns);
 		assert.ok(beforeResponsePartIds.length > 0);
-		const chatUri = buildDefaultChatUri(sessionUri);
-		for (const chat of additionalChats) {
-			context.client.notify('unsubscribe', { channel: chat });
-		}
-		context.client.notify('unsubscribe', { channel: chatUri });
-		context.client.notify('unsubscribe', { channel: sessionUri });
-		await timeout(50);
+		unsubscribeSessionAndChats(sessionUri, additionalChats);
 
 		await retry(async () => {
-			const restored = await fetchSessionWithChat(context.client, sessionUri);
-			const restoredResponsePartIds = responsePartIds(restored.turns);
-			const restoredTurns = durableTurnContent(restored.turns);
-			assert.deepStrictEqual(restoredTurns, beforeTurns);
-			assert.strictEqual(restoredResponsePartIds.length, beforeResponsePartIds.length);
-			if (restoredResponsePartIds.every((id, index) => id === beforeResponsePartIds[index])) {
-				context.client.notify('unsubscribe', { channel: chatUri });
-				context.client.notify('unsubscribe', { channel: sessionUri });
-				throw new Error('Session has not been reconstructed with complete durable provider state');
+			try {
+				const restored = await fetchSessionWithChat(context.client, sessionUri);
+				const restoredResponsePartIds = responsePartIds(restored.turns);
+				const restoredTurns = durableTurnContent(restored.turns);
+				assert.deepStrictEqual(restoredTurns, beforeTurns);
+				assert.strictEqual(restoredResponsePartIds.length, beforeResponsePartIds.length);
+				if (restoredResponsePartIds.every((id, index) => id === beforeResponsePartIds[index])) {
+					throw new Error('Session has not been reconstructed with complete durable provider state');
+				}
+				for (const chat of additionalChats) {
+					await context.client.call<SubscribeResult>('subscribe', { channel: chat });
+				}
+			} catch (error) {
+				unsubscribeSessionAndChats(sessionUri, additionalChats);
+				throw error;
 			}
 		}, 50, 20);
 	}
@@ -176,7 +185,13 @@ export function defineSessionPersistenceTests(context: IAgentHostE2ETestContext)
 				&& getActionEnvelope(n).channel === buildDefaultChatUri(sessionUri)
 				&& (getActionEnvelope(n).action as ChatToolCallCompleteAction).turnId === turnId,
 			).flatMap(n => (getActionEnvelope(n).action as ChatToolCallCompleteAction).result.content ?? [])
-				.find((content): content is ToolResultFileEditContent => content.type === ToolResultContentType.FileEdit);
+				.find((content): content is ToolResultFileEditContent =>
+					content.type === ToolResultContentType.FileEdit
+					&& !!content.before?.content.uri
+					&& !!content.after?.content.uri
+					&& !!parseSessionDbUri(content.before.content.uri)
+					&& !!parseSessionDbUri(content.after.content.uri)
+				);
 			assert.ok(edit?.before?.content.uri);
 			assert.ok(edit.after?.content.uri);
 
@@ -208,7 +223,9 @@ export function defineSessionPersistenceTests(context: IAgentHostE2ETestContext)
 		await restartAndInitialize(`archive-unrestored-reconnect-${config.provider}`, workspace);
 		await context.client.call<SubscribeResult>('subscribe', { channel: ROOT_STATE_URI });
 		const before = await context.client.call<ListSessionsResult>('listSessions', { channel: ROOT_STATE_URI });
-		assert.strictEqual(before.items.some(item => item.resource === sessionUri), true);
+		const beforeSession = before.items.find(item => item.resource === sessionUri);
+		assert.ok(beforeSession);
+		const isRead = (beforeSession.status & SessionStatus.IsRead) === 0;
 		context.client.clearReceived();
 		context.client.dispatch({
 			channel: sessionUri,
@@ -220,6 +237,18 @@ export function defineSessionPersistenceTests(context: IAgentHostE2ETestContext)
 			&& (notification.params as SessionSummaryChangedParams).session === sessionUri
 			&& (((notification.params as SessionSummaryChangedParams).changes.status ?? 0) & SessionStatus.IsArchived) !== 0,
 		);
+		context.client.clearReceived();
+		context.client.dispatch({
+			channel: sessionUri,
+			clientSeq: 2,
+			action: { type: ActionType.SessionIsReadChanged, isRead },
+		});
+		await context.client.waitForNotification(notification =>
+			notification.method === 'root/sessionSummaryChanged'
+			&& (notification.params as SessionSummaryChangedParams).session === sessionUri
+			&& (notification.params as SessionSummaryChangedParams).changes.status !== undefined
+			&& ((((notification.params as SessionSummaryChangedParams).changes.status ?? 0) & SessionStatus.IsRead) !== 0) === isRead,
+		);
 
 		await restartAndInitialize(`archive-unrestored-verify-${config.provider}`, workspace);
 		const after = await context.client.call<ListSessionsResult>('listSessions', { channel: ROOT_STATE_URI, includeArchived: true });
@@ -228,9 +257,11 @@ export function defineSessionPersistenceTests(context: IAgentHostE2ETestContext)
 		assert.deepStrictEqual({
 			restored: restored !== undefined,
 			isArchived: restored !== undefined && (restored.status & SessionStatus.IsArchived) !== 0,
+			isRead: restored !== undefined && (restored.status & SessionStatus.IsRead) !== 0,
 		}, {
 			restored: true,
 			isArchived: true,
+			isRead,
 		});
 
 		await context.client.call('disposeSession', { channel: sessionUri }, getAgentHostE2ETestTimeout(30_000, 90_000));
