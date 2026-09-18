@@ -66,6 +66,7 @@ import { IMenubarMainService, MenubarMainService } from '../../platform/menubar/
 import type { IOSProxyConfig } from '../../platform/native/common/native.js';
 import { INativeHostMainService, NativeHostMainService } from '../../platform/native/electron-main/nativeHostMainService.js';
 import { GlobalKeybindingsMainService, IGlobalKeybindingsMainService } from '../../platform/globalKeybindings/electron-main/globalKeybindingsMainService.js';
+import { registerLatentMainChannels, registerLatentMainServices } from './latent.contribution.js';
 import { IMeteredConnectionService } from '../../platform/meteredConnection/common/meteredConnection.js';
 import { METERED_CONNECTION_CHANNEL } from '../../platform/meteredConnection/common/meteredConnectionIpc.js';
 import { MeteredConnectionChannel } from '../../platform/meteredConnection/electron-main/meteredConnectionChannel.js';
@@ -1239,6 +1240,9 @@ export class CodeApplication extends Disposable {
 		// System-wide (OS global) keybindings
 		services.set(IGlobalKeybindingsMainService, new SyncDescriptor(GlobalKeybindingsMainService, [globalShortcut]));
 
+		// Latent fork services
+		registerLatentMainServices(services);
+
 		// Metered Connection
 		const meteredConnectionService = new MeteredConnectionMainService(this.configurationService);
 		services.set(IMeteredConnectionService, meteredConnectionService);
@@ -1423,6 +1427,9 @@ export class CodeApplication extends Disposable {
 		});
 		mainProcessElectronServer.registerChannel('nativeHost', nativeHostChannel);
 		sharedProcessClient.then(client => client.registerChannel('nativeHost', nativeHostChannel));
+
+		// Latent fork channels
+		registerLatentMainChannels(accessor, mainProcessElectronServer);
 
 		// Web Content Extractor
 		const webContentExtractorChannel = ProxyChannel.fromService(accessor.get(IWebContentExtractorService), disposables);
