@@ -48,3 +48,4 @@ the list below, then run `npm run valid-layers-check` and `npm run typecheck-cli
 - `src/vs/workbench/contrib/latent/electron-browser/latent.contribution.ts`: workbench services and contributions.
 - `src/vs/workbench/contrib/latent/browser/floatingComposer`: the floating chat composer.
 - `extensions/studybuddy`: the Study Buddy extension.
+- `specs/`: formal specifications for the three-part AI workbench (Parts 1 and 2 are committed; Part 3 is local-only and ignored).

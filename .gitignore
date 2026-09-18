@@ -62,3 +62,6 @@ docs/
 node_modules.local-before-external/
 screenshots/
 scripts/fixtures
+
+# Part 3 of the AI workbench specification is retained locally until the private derivative repository exists
+/specs/03-private-derivative.md
