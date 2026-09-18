@@ -50,6 +50,7 @@ the list below, then run `npm run valid-layers-check` and `npm run typecheck-cli
 - `src/vs/workbench/contrib/latent/browser/{drafts,threads,sideChat,sessionsSearch,migration}`: drafts, thread branching, side chat, Sessions search, credential migration (spec 01/02).
 - `src/vs/workbench/contrib/latentSelection`, `src/vs/platform/latentSelection`: the Selection Bar and the system-wide selection listener.
 - `src/vs/platform/latentFloatingWindow`, `src/vs/workbench/contrib/latent/electron-browser/floatingWindow`: the system-level floating window and its voice session.
+- `src/vs/latentRuntime`, `src/vs/platform/latentRuntime`, `src/vs/workbench/contrib/latent/browser/runtime`: the Managed Runtime process (gateways, bots, memory, capabilities, artifacts, scheduled jobs), its main-process supervisor, and the workbench Bots view.
 - `extensions/latent-provider`: provider configuration, credentials, and the capability model.
 - `extensions/latent-selection`: selection actions and the action extension point.
 - `extensions/studybuddy`: the remaining Study Buddy learning features (moved to the private plugin by spec 03).

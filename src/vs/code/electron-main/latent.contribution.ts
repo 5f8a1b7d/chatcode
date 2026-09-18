@@ -9,6 +9,10 @@ import { LatentSelectionMainService } from '../../platform/latentSelection/elect
 import { ILatentFloatingWindowService, LATENT_FLOATING_WINDOW_CHANNEL } from '../../platform/latentFloatingWindow/common/latentFloatingWindow.js';
 import { LatentFloatingWindowChannel } from '../../platform/latentFloatingWindow/common/latentFloatingWindowIpc.js';
 import { LatentFloatingWindowMainService } from '../../platform/latentFloatingWindow/electron-main/latentFloatingWindowMainService.js';
+import { ProxyChannel } from '../../base/parts/ipc/common/ipc.js';
+import { DisposableStore } from '../../base/common/lifecycle.js';
+import { ILatentRuntimeService, LATENT_RUNTIME_CHANNEL } from '../../platform/latentRuntime/common/latentRuntime.js';
+import { LatentRuntimeMainService } from '../../platform/latentRuntime/electron-main/latentRuntimeMainService.js';
 
 /**
  * Fork-owned registration seam for main-process services added by Latent.
@@ -20,15 +24,21 @@ export function registerLatentMainServices(services: ServiceCollection): void {
 	services.set(ILatentSelectionService, new SyncDescriptor(LatentSelectionMainService, undefined, false));
 	// Latent system-level floating window
 	services.set(ILatentFloatingWindowService, new SyncDescriptor(LatentFloatingWindowMainService, undefined, false));
+	// Latent managed runtime supervisor
+	services.set(ILatentRuntimeService, new SyncDescriptor(LatentRuntimeMainService, undefined, false));
 }
 
 /**
  * Registers the IPC channels for Latent main-process services once the
  * service instances are available.
  */
+const channelDisposables = new DisposableStore();
+
 export function registerLatentMainChannels(accessor: ServicesAccessor, mainProcessElectronServer: ElectronIPCServer): void {
 	// Latent system-wide text selection and Selection Bar
 	mainProcessElectronServer.registerChannel(LATENT_SELECTION_CHANNEL, new LatentSelectionChannel(accessor.get(ILatentSelectionService)));
 	// Latent system-level floating window
 	mainProcessElectronServer.registerChannel(LATENT_FLOATING_WINDOW_CHANNEL, new LatentFloatingWindowChannel(accessor.get(ILatentFloatingWindowService)));
+	// Latent managed runtime supervisor
+	mainProcessElectronServer.registerChannel(LATENT_RUNTIME_CHANNEL, ProxyChannel.fromService(accessor.get(ILatentRuntimeService), channelDisposables));
 }

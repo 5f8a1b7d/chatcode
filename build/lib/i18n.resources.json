@@ -207,6 +207,14 @@
 			"project": "vscode-workbench"
 		},
 		{
+			"name": "vs/platform/latentRuntime",
+			"project": "vscode-workbench"
+		},
+		{
+			"name": "vs/latentRuntime",
+			"project": "vscode-workbench"
+		},
+		{
 			"name": "vs/workbench/contrib/quickaccess",
 			"project": "vscode-workbench"
 		},

@@ -29,6 +29,19 @@ export async function activate(context: vscode.ExtensionContext): Promise<ILaten
 	}));
 	context.subscriptions.push(vscode.commands.registerCommand('latent.provider.resolve', (capability: string) => isCapability(capability) ? capabilityService!.resolve({ capability }) : undefined));
 	context.subscriptions.push(vscode.commands.registerCommand('latent.provider.importLegacyState', (state: unknown) => manager.getStore().importLegacyState(state)));
+	// The managed runtime keeps its own encrypted copy so bots can run while the workbench is closed (spec 01 §3.4).
+	context.subscriptions.push(vscode.commands.registerCommand('latent.provider.exportModelBinding', async (capability: string, preferredProviderId?: string) => {
+		if (!isCapability(capability)) {
+			return undefined;
+		}
+		try {
+			const binding = await capabilityService!.resolve({ capability, preferredProviderId });
+			const secret = await manager.getStore().getSecret(binding.secretRef);
+			return { providerId: binding.providerId, modelId: binding.modelId, protocol: binding.protocol, baseUrl: binding.baseUrl, apiKey: secret };
+		} catch {
+			return undefined;
+		}
+	}));
 
 	await migrateSettings(context);
 	await manager.initialize();

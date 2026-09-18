@@ -61,3 +61,41 @@
 	opacity: 0.7;
 	font-size: 0.9em;
 }
+
+/* Latent: Bots view in the Explorer */
+.latent-bots-view .latent-bots-body {
+	padding: 4px 12px;
+	overflow: auto;
+}
+
+.latent-bots-view .latent-bots-section h3 {
+	margin: 8px 0 4px;
+	font-size: 11px;
+	text-transform: uppercase;
+	opacity: 0.8;
+}
+
+.latent-bots-view .latent-bots-section ul {
+	margin: 0 0 6px;
+	padding-left: 16px;
+}
+
+.latent-bots-view .latent-bots-section li.empty,
+.latent-bots-view .latent-bots-empty {
+	opacity: 0.7;
+}
+
+.latent-bots-view button.monaco-button {
+	margin: 2px 0 6px;
+	padding: 2px 8px;
+	border-radius: 2px;
+	border: 1px solid var(--vscode-button-border, transparent);
+	background: var(--vscode-button-secondaryBackground);
+	color: var(--vscode-button-secondaryForeground);
+	cursor: pointer;
+}
+
+.latent-bots-view .latent-bots-footer {
+	margin-top: 8px;
+	opacity: 0.7;
+}

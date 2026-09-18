@@ -14,10 +14,15 @@ import { TabDraftService } from '../browser/drafts/tabDraftService.js';
 import { IThreadService } from '../common/threads.js';
 import { ThreadService } from '../browser/threads/threadService.js';
 import { ISideChatOpener, SideChatOpener } from '../browser/sideChat/sideChatOpener.js';
+import { IManagedRuntimeService, ManagedRuntimeService } from '../browser/runtime/managedRuntimeService.js';
+import { registerMainProcessRemoteService } from '../../../../platform/ipc/electron-browser/services.js';
+import { ILatentRuntimeService, LATENT_RUNTIME_CHANNEL } from '../../../../platform/latentRuntime/common/latentRuntime.js';
 
 registerSingleton(ITabDraftService, TabDraftService, InstantiationType.Delayed);
 registerSingleton(IThreadService, ThreadService, InstantiationType.Delayed);
 registerSingleton(ISideChatOpener, SideChatOpener, InstantiationType.Delayed);
+registerMainProcessRemoteService(ILatentRuntimeService, LATENT_RUNTIME_CHANNEL);
+registerSingleton(IManagedRuntimeService, ManagedRuntimeService, InstantiationType.Delayed);
 
 //#endregion
 
@@ -43,6 +48,10 @@ import '../browser/sessionsSearch/sessionsSearchView.js';
 
 // System-level floating window (new thread in the editor area, full-duplex voice)
 import './floatingWindow/floatingWindow.contribution.js';
+
+// Managed runtime: status, approvals, Bots view, recall indexing
+import { RuntimeContribution } from '../browser/runtime/runtime.contribution.js';
+registerWorkbenchContribution2(RuntimeContribution.ID, RuntimeContribution, WorkbenchPhase.Eventually);
 
 // One-time copy of Study Buddy provider credentials to the Provider extension
 import { ProviderSecretMigrationContribution } from '../browser/migration/providerSecretMigration.js';
