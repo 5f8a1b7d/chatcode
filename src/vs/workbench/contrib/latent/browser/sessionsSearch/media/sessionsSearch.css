@@ -1,0 +1,63 @@
+.latent-sessions-search .latent-sessions-header {
+	padding: 4px 8px;
+}
+
+.latent-sessions-search .latent-sessions-columns {
+	display: flex;
+	flex-direction: row;
+	overflow: hidden;
+}
+
+.latent-sessions-search .latent-sessions-columns .column {
+	flex: 1 1 0;
+	min-width: 120px;
+	border-right: 1px solid var(--vscode-sideBarSectionHeader-border, var(--vscode-widget-border));
+	overflow: hidden;
+}
+
+.latent-sessions-search .latent-sessions-columns .preview {
+	flex: 1 1 0;
+	min-width: 120px;
+	padding: 8px;
+	overflow: auto;
+	white-space: pre-wrap;
+}
+
+.latent-sessions-search .latent-sessions-columns .preview .role {
+	font-weight: 600;
+}
+
+.latent-sessions-search .latent-sessions-columns .preview .time {
+	opacity: 0.7;
+	font-size: 0.9em;
+	margin-bottom: 6px;
+}
+
+.latent-sessions-search .latent-sessions-columns .preview pre.text {
+	white-space: pre-wrap;
+	font-family: inherit;
+	margin: 0;
+}
+
+.latent-sessions-row {
+	display: flex;
+	flex-direction: column;
+	justify-content: center;
+	height: 44px;
+	padding: 0 8px;
+	overflow: hidden;
+}
+
+.latent-sessions-row .title {
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.latent-sessions-row .detail {
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	opacity: 0.7;
+	font-size: 0.9em;
+}

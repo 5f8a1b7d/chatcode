@@ -1,6 +1,7 @@
+/* eslint-disable header/header */
 import { Emitter, Event } from '../../../../../base/common/event.js';
 import { Disposable, DisposableMap, DisposableStore, IDisposable, toDisposable } from '../../../../../base/common/lifecycle.js';
-import type { IComposerDraft, IComposerPlugin, IComposerSnapshot, IComposerSubmitPort, IComposerAttachment, IComposerAttachmentCapabilities, IComposerModelOptions, IComposerSubmissionState, IComposerPluginActivationContext } from './composerContracts.js';
+import type { IComposerDraft, IComposerPlugin, IComposerSnapshot, IComposerSubmitPort, IComposerAttachment, IComposerAttachmentCapabilities, IComposerModelOptions, IComposerSubmissionState, IComposerPluginActivationContext, IComposerDiagnostic } from './composerContracts.js';
 import { ComposerSubmitKind } from './composerContracts.js';
 
 function copyDraft(draft: IComposerDraft): IComposerDraft {
@@ -36,8 +37,18 @@ export class ComposerModel<TContext extends IComposerPluginActivationContext = I
 				preferredPendingKind: options.preferredPendingKind,
 			},
 			error: undefined,
+			diagnostics: [],
 			plugins: [],
 		};
+	}
+
+	/** Reference diagnostics shown under the input; sending is blocked while any exist. */
+	setDiagnostics(diagnostics: readonly IComposerDiagnostic[]): void {
+		const current = this._snapshot.diagnostics;
+		if (current.length === diagnostics.length && current.every((d, i) => d.kind === diagnostics[i].kind && d.number === diagnostics[i].number && d.message === diagnostics[i].message)) {
+			return;
+		}
+		this._update({ diagnostics: [...diagnostics] });
 	}
 
 	/** State reducers */
@@ -187,6 +198,7 @@ export class ComposerModel<TContext extends IComposerPluginActivationContext = I
 		return !this._store.isDisposed &&
 			!this._snapshot.disabled &&
 			!this._snapshot.submitting &&
+			this._snapshot.diagnostics.length === 0 &&
 			(
 				this._snapshot.draft.text.trim() !== '' ||
 				this._snapshot.draft.attachments.length > 0

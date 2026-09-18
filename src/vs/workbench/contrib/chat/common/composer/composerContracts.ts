@@ -1,3 +1,4 @@
+/* eslint-disable header/header */
 import type { Event } from '../../../../../base/common/event.js';
 import type { URI } from '../../../../../base/common/uri.js';
 import type { IChatAgentAttachmentCapabilities } from '../participants/chatAgents.js';
@@ -44,10 +45,22 @@ export interface IComposerModelOptions
 /** File and image attachment support exposed to a composer renderer. */
 export type IComposerAttachmentCapabilities = Readonly<Pick<IChatAgentAttachmentCapabilities, 'supportsFileAttachments' | 'supportsImageAttachments'>>;
 
-/** File or image attachment represented by a stable id and resource. */
+/**
+ * Attachment represented by a stable id. Files and images carry a resource;
+ * any other chat context (selection, symbol, paste) is a `context` attachment
+ * with a display label. `number` is the Latent attachment number (P1-FR-050).
+ */
 export type IComposerAttachment =
-	{ readonly kind: 'image'; readonly resource: URI; readonly mimeType: string; readonly id: string; } |
-	{ readonly kind: 'file'; readonly resource: URI; readonly mimeType: string; readonly id: string; };
+	{ readonly kind: 'image'; readonly resource: URI; readonly mimeType: string; readonly id: string; readonly number?: number } |
+	{ readonly kind: 'file'; readonly resource: URI; readonly mimeType: string; readonly id: string; readonly number?: number } |
+	{ readonly kind: 'context'; readonly label: string; readonly id: string; readonly number?: number; readonly detail?: string };
+
+/** A problem with a `#<number>` reference that blocks sending (P1-FR-053). */
+export interface IComposerDiagnostic {
+	readonly kind: 'invalid' | 'stale';
+	readonly number: number;
+	readonly message: string;
+}
 
 /** Editable prompt content owned by the composer model. */
 export interface IComposerDraft {
@@ -63,6 +76,7 @@ export interface IComposerSnapshot {
 	readonly disabled: boolean;
 	readonly submitting: boolean;
 	readonly error: string | undefined;
+	readonly diagnostics: readonly IComposerDiagnostic[];
 	readonly plugins: readonly IComposerPluginSnapshot[];
 }
 

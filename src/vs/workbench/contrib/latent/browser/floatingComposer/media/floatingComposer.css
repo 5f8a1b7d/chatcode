@@ -176,3 +176,33 @@
 		transition: none;
 	}
 }
+
+/* Latent: attachment numbers and reference diagnostics (P1-FR-050, P1-FR-053) */
+.floating-composer-host .composer-attachment-number {
+	font-weight: 600;
+	opacity: 0.8;
+}
+
+.floating-composer-host .composer-diagnostics {
+	margin: 0;
+	padding: 0 0 0 16px;
+	color: var(--vscode-errorForeground);
+	font-size: 0.9em;
+}
+
+.floating-composer-host .composer-error {
+	color: var(--vscode-errorForeground);
+	font-size: 0.9em;
+}
+
+/* Latent: message version controls in the request hover toolbar (P1-FR-062) */
+.latent-version-item {
+	display: inline-flex;
+	align-items: center;
+}
+
+.latent-version-item .latent-version-counter {
+	padding: 0 4px;
+	font-size: 0.9em;
+	opacity: 0.8;
+}

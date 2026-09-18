@@ -1,33 +1,19 @@
 /* eslint-disable header/header */
 import { addDisposableListener, EventHelper, EventType, getWindow, isHTMLElement } from '../../../../../base/browser/dom.js';
-import { mainWindow } from '../../../../../base/browser/window.js';
 import { GlobalPointerMoveMonitor } from '../../../../../base/browser/globalPointerMoveMonitor.js';
-import { Codicon } from '../../../../../base/common/codicons.js';
 import { onUnexpectedError } from '../../../../../base/common/errors.js';
-import { Disposable, DisposableStore, IDisposable, MutableDisposable, toDisposable } from '../../../../../base/common/lifecycle.js';
-import { getMediaMime } from '../../../../../base/common/mime.js';
-import { autorun, IReader } from '../../../../../base/common/observable.js';
-import { basename, isEqual } from '../../../../../base/common/resources.js';
-import { URI } from '../../../../../base/common/uri.js';
-import { localize, localize2 } from '../../../../../nls.js';
-import { Action2, registerAction2 } from '../../../../../platform/actions/common/actions.js';
-import { IConfigurationService } from '../../../../../platform/configuration/common/configuration.js';
+import { Disposable, IDisposable, MutableDisposable, toDisposable } from '../../../../../base/common/lifecycle.js';
+import { localize } from '../../../../../nls.js';
+import { IInstantiationService } from '../../../../../platform/instantiation/common/instantiation.js';
+import { IChatWidget } from '../../../chat/browser/chat.js';
+import { IChatModel } from '../../../chat/common/model/chatModel.js';
+import { ChatAgentLocation } from '../../../chat/common/constants.js';
 import { IContextKeyService } from '../../../../../platform/contextkey/common/contextkey.js';
-import { createDecorator, IInstantiationService, ServicesAccessor } from '../../../../../platform/instantiation/common/instantiation.js';
-import { InstantiationType, registerSingleton } from '../../../../../platform/instantiation/common/extensions.js';
 import { ServiceCollection } from '../../../../../platform/instantiation/common/serviceCollection.js';
 import { IStorageService, StorageScope, StorageTarget } from '../../../../../platform/storage/common/storage.js';
 import { editorBackground, inputBackground } from '../../../../../platform/theme/common/colorRegistry.js';
-import { IViewDescriptorService, ViewContainerLocation } from '../../../../common/views.js';
-import { IWorkbenchLayoutService, Parts } from '../../../../services/layout/browser/layoutService.js';
-import { ChatViewContainerId, ChatViewPaneTarget, IChatWidget, IChatWidgetService } from '../../../chat/browser/chat.js';
-import { IChatRequestVariableEntry } from '../../../chat/common/attachments/chatVariableEntries.js';
-import { ComposerSubmitKind, type IComposerAttachment, type IComposerDraft } from '../../../chat/common/composer/composerContracts.js';
 import { ComposerModel } from '../../../chat/common/composer/composerModel.js';
-import { ChatRequestQueueKind, IChatModelReference, IChatService } from '../../../chat/common/chatService/chatService.js';
 import { ChatMode } from '../../../chat/common/chatModes.js';
-import { ChatAgentLocation, ChatConfiguration, ChatModeKind } from '../../../chat/common/constants.js';
-import { IChatAgentService } from '../../../chat/common/participants/chatAgents.js';
 import { ChatWidget } from '../../../chat/browser/widget/chatWidget.js';
 import { renderCompactComposer, type ICompactComposerPluginActivationContext } from '../../../chat/browser/widget/input/compactComposer.js';
 import './media/floatingComposer.css';
@@ -35,18 +21,13 @@ import './media/floatingComposer.css';
 const EDGE_GAP = 12;
 const FLOATING_HEIGHT_KEY = 'chat.floatingComposer.height';
 const MIN_EXPANDED_HEIGHT = 280;
-const STUDY_BUDDY_SERVICE_MODEL_IDENTIFIER = 'latentnote-catalog/studybuddy-service';
 
-export const IFloatingComposerService = createDecorator<IFloatingComposerService>('floatingComposerService');
-
-export interface IFloatingComposerService {
-	readonly _serviceBrand: undefined;
-	toggle(): void;
-	show(): void;
-	hide(): void;
+export interface IFloatingComposerHostCallbacks {
+	/** Move the bound Thread into a Side Chat (open-location rule, origin `editorArea`). */
+	readonly openInSideChat: () => Promise<void>;
 }
 
-/** Owns one draggable React composer surface within an editor-part container. */
+/** Owns one draggable React composer surface within an editor group container. */
 export class FloatingComposerHost extends Disposable {
 
 	private readonly _element: HTMLElement;
@@ -64,8 +45,7 @@ export class FloatingComposerHost extends Disposable {
 	constructor(
 		private readonly _container: HTMLElement,
 		model: ComposerModel<ICompactComposerPluginActivationContext>,
-		private readonly _openInSideChat: () => Promise<void>,
-		private readonly _getBoundWidget: () => IChatWidget | undefined,
+		private readonly _callbacks: IFloatingComposerHostCallbacks,
 		@IInstantiationService instantiationService: IInstantiationService,
 		@IContextKeyService contextKeyService: IContextKeyService,
 		@IStorageService private readonly _storageService: IStorageService,
@@ -133,7 +113,7 @@ export class FloatingComposerHost extends Disposable {
 		this._chatWidget.setVisible(false);
 		this._register(addDisposableListener(collapse, EventType.CLICK, () => this.collapse()));
 		this._register(addDisposableListener(retry, EventType.CLICK, () => void this._chatWidget.rerunLastRequest()));
-		this._register(addDisposableListener(move, EventType.CLICK, () => void this._openInSideChat()));
+		this._register(addDisposableListener(move, EventType.CLICK, () => void this._callbacks.openInSideChat()));
 		this._register(addDisposableListener(this._collapsed, EventType.FOCUS_IN, () => this.expand()));
 		this._register(addDisposableListener(handle, EventType.POINTER_DOWN, event => this._startResize(event)));
 		this._register(addDisposableListener(handle, EventType.KEY_DOWN, event => {
@@ -165,13 +145,11 @@ export class FloatingComposerHost extends Disposable {
 		this._register(toDisposable(() => resizeObserver.disconnect()));
 	}
 
-	setBoundWidget(widget: IChatWidget | undefined): void {
-		if (!widget || widget === this._chatWidget) {
-			return;
-		}
-		const model = widget.viewModel?.model;
-		if (model && !isEqual(this._chatWidget.viewModel?.sessionResource, model.sessionResource)) {
-			this._chatWidget.setModel(model);
+	/** Shows or hides the whole surface; used when the active Tab is not editable (P1-FR-011). */
+	setVisible(visible: boolean): void {
+		this._element.hidden = !visible;
+		if (!visible) {
+			this.collapse();
 		}
 	}
 
@@ -179,7 +157,6 @@ export class FloatingComposerHost extends Disposable {
 		if (this._isExpanded) {
 			return;
 		}
-		this.setBoundWidget(this._getBoundWidget());
 		this._isExpanded = true;
 		this._collapsed.hidden = true;
 		this._expanded.hidden = false;
@@ -203,8 +180,10 @@ export class FloatingComposerHost extends Disposable {
 		this._chatWidget.setModel(undefined);
 	}
 
-	bindModel(model: IChatModelReference['object']): void {
-		this._chatWidget.setModel(model);
+	bindModel(model: IChatModel | undefined): void {
+		if (model !== this._chatWidget.viewModel?.model) {
+			this._chatWidget.setModel(model);
+		}
 	}
 
 	private _setExpandedHeight(height: number, persist = false): void {
@@ -273,314 +252,3 @@ export class FloatingComposerHost extends Disposable {
 		this._setPosition(composerRect.left - containerRect.left, composerRect.top - containerRect.top);
 	}
 }
-
-/** Connects the floating renderer to the most recently focused chat widget. */
-export class FloatingComposerService extends Disposable implements IFloatingComposerService {
-
-	declare readonly _serviceBrand: undefined;
-	private readonly _host = this._register(new MutableDisposable<FloatingComposerHost>());
-	private readonly _localSession = this._register(new MutableDisposable<IChatModelReference>());
-	private readonly _model = this._register(new ComposerModel<ICompactComposerPluginActivationContext>(
-		{ submit: (draft, kind) => this._submit(draft, kind) },
-		{
-			initialDraft: { text: '', attachments: [] },
-			initialCapabilities: {},
-			supportsSteering: true,
-			preferredPendingKind: ComposerSubmitKind.Queued,
-		},
-	));
-	private readonly _widgetRegistrations = this._register(new DisposableStore());
-	private _boundWidget: IChatWidget | undefined;
-
-	constructor(
-		@IChatWidgetService private readonly _chatWidgetService: IChatWidgetService,
-		@IWorkbenchLayoutService private readonly _layoutService: IWorkbenchLayoutService,
-		@IConfigurationService private readonly _configurationService: IConfigurationService,
-		@IInstantiationService private readonly _instantiationService: IInstantiationService,
-		@IChatAgentService private readonly _chatAgentService: IChatAgentService,
-		@IViewDescriptorService private readonly _viewDescriptorService: IViewDescriptorService,
-		@IChatService private readonly _chatService: IChatService,
-	) {
-		super();
-		this._register(this._model.onDidChange(() => this._syncModelToWidget()));
-		this._register(this._chatWidgetService.onDidChangeFocusedWidget(widget => this._bindWidget(widget)));
-		this._register(this._configurationService.onDidChangeConfiguration(event => {
-			if (event.affectsConfiguration(ChatConfiguration.RequestQueueingDefaultAction)) {
-				this._syncSubmissionState(this._boundWidget);
-			}
-		}));
-		this._bindWidget(this._chatWidgetService.lastFocusedWidget);
-	}
-
-	toggle(): void {
-		if (this._host.value) {
-			this.hide();
-		} else {
-			this.show();
-		}
-	}
-
-	show(): void {
-		if (this._host.value) {
-			return;
-		}
-		const container = this._layoutService.getContainer(mainWindow, Parts.EDITOR_PART);
-		if (!container) {
-			return;
-		}
-		this._host.value = this._instantiationService.createInstance(FloatingComposerHost, container, this._model, () => this._openInSideChat(), () => this._boundWidget);
-		const studyBuddyAgent = this._chatAgentService.getAgent('latentnote.studyBuddy.chat');
-		const existingStudyBuddyWidget = studyBuddyAgent && this._boundWidget?.lastSelectedAgent?.id === studyBuddyAgent.id ? this._boundWidget : undefined;
-		if (existingStudyBuddyWidget?.viewModel?.model) {
-			this._host.value.setBoundWidget(existingStudyBuddyWidget);
-		} else {
-			this._localSession.value ??= this._chatService.startNewLocalSession(ChatAgentLocation.Chat, { debugOwner: 'FloatingComposerService#show' });
-			this._host.value.bindModel(this._localSession.value.object);
-		}
-		if (studyBuddyAgent) {
-			this._host.value.chatWidget.input.setChatMode(ChatModeKind.Ask);
-			this._host.value.chatWidget.lastSelectedAgent = studyBuddyAgent;
-		}
-		if (!this._host.value.chatWidget.input.currentLanguageModel) {
-			void this._host.value.chatWidget.input.requestModelByIdentifier(STUDY_BUDDY_SERVICE_MODEL_IDENTIFIER);
-		}
-		this._bindWidget(this._host.value.chatWidget);
-	}
-
-	hide(): void {
-		this._host.clear();
-	}
-
-	private async _openInSideChat(): Promise<void> {
-		const host = this._host.value;
-		const sessionResource = host?.chatWidget.viewModel?.sessionResource ?? this._boundWidget?.viewModel?.sessionResource;
-		if (!host || !sessionResource) {
-			return;
-		}
-		host.unboundForMove();
-		try {
-			const chatContainer = this._viewDescriptorService.getViewContainerById(ChatViewContainerId);
-			if (chatContainer && this._viewDescriptorService.getViewContainerLocation(chatContainer) !== ViewContainerLocation.AuxiliaryBar) {
-				this._viewDescriptorService.moveViewContainerToLocation(chatContainer, ViewContainerLocation.AuxiliaryBar);
-			}
-			this._layoutService.setPartHidden(false, Parts.AUXILIARYBAR_PART);
-			const sideWidget = await this._chatWidgetService.openSession(sessionResource, ChatViewPaneTarget, { revealIfOpened: false });
-			if (!sideWidget || !isEqual(sideWidget.viewModel?.sessionResource, sessionResource)) {
-				throw new Error(localize('floatingComposer.sideChatUnavailable', "Could not open this chat in the secondary side bar."));
-			}
-			this._bindWidget(sideWidget);
-			const studyBuddyAgent = this._chatAgentService.getAgent('latentnote.studyBuddy.chat');
-			if (studyBuddyAgent) {
-				sideWidget.input.setChatMode(ChatModeKind.Ask);
-				sideWidget.lastSelectedAgent = studyBuddyAgent;
-			}
-			if (!sideWidget.input.currentLanguageModel) {
-				void sideWidget.input.requestModelByIdentifier(STUDY_BUDDY_SERVICE_MODEL_IDENTIFIER);
-			}
-		} catch (error) {
-			const model = this._chatService.getSession(sessionResource);
-			if (model) {
-				host.bindModel(model);
-			}
-			this._bindWidget(host.chatWidget);
-			host.expand();
-			onUnexpectedError(error);
-		}
-	}
-
-	private _bindWidget(widget: IChatWidget | undefined): void {
-		if (this._host.value?.isExpanded) {
-			this._host.value.setBoundWidget(widget);
-		}
-		this._boundWidget = undefined;
-		this._widgetRegistrations.clear();
-		this._model.setDraft({
-			text: widget?.inputPart.inputEditor.getValue() ?? '',
-			attachments: widget ? this._getComposerAttachments(widget) : [],
-		});
-		this._syncCapabilities(widget);
-		this._syncSubmissionState(widget);
-		this._model.setDisabled(!widget);
-		this._boundWidget = widget;
-		if (!widget) {
-			return;
-		}
-		this._widgetRegistrations.add(widget.inputPart.inputEditor.onDidChangeModelContent(() => {
-			if (this._boundWidget === widget) {
-				this._syncWidgetDraft(widget);
-			}
-		}));
-		this._widgetRegistrations.add(widget.inputPart.attachmentModel.onDidChange(() => {
-			if (this._boundWidget === widget) {
-				this._syncWidgetDraft(widget);
-			}
-		}));
-		this._widgetRegistrations.add(widget.onDidChangeAgent(() => {
-			if (this._boundWidget === widget) {
-				this._syncCapabilities(widget);
-				this._syncSubmissionState(widget);
-			}
-		}));
-		this._widgetRegistrations.add(widget.onDidChangeViewModel(() => {
-			if (this._boundWidget === widget) {
-				this._bindWidget(widget);
-			}
-		}));
-		if (widget.viewModel) {
-			this._widgetRegistrations.add(autorun(reader => {
-				if (this._boundWidget === widget) {
-					this._syncSubmissionState(widget, reader);
-				}
-			}));
-		}
-		for (const plugin of widget.inputPart.getComposerPlugins()) {
-			this._widgetRegistrations.add(this._model.registerPlugin(plugin));
-		}
-	}
-
-	private _syncModelToWidget(): void {
-		const widget = this._boundWidget;
-		if (!widget) {
-			return;
-		}
-		const draft = this._model.getSnapshot().draft;
-		if (widget.inputPart.inputEditor.getValue() !== draft.text) {
-			widget.inputPart.setValue(draft.text, false);
-		}
-		this._syncAttachmentsToWidget(widget, draft.attachments);
-	}
-
-	private _syncWidgetDraft(widget: IChatWidget): void {
-		const current = this._model.getSnapshot().draft;
-		const text = widget.inputPart.inputEditor.getValue();
-		const attachments = this._getComposerAttachments(widget);
-		if (current.text === text && this._sameAttachments(current.attachments, attachments)) {
-			return;
-		}
-		this._model.setDraft({ text, attachments });
-	}
-
-	private _syncCapabilities(widget: IChatWidget | undefined): void {
-		this._model.setCapabilities({
-			supportsFileAttachments: widget?.attachmentCapabilities.supportsFileAttachments,
-			supportsImageAttachments: widget?.attachmentCapabilities.supportsImageAttachments,
-		});
-	}
-
-	private _syncSubmissionState(widget: IChatWidget | undefined, reader?: IReader): void {
-		const chatModel = widget?.viewModel?.model;
-		const requestInProgress = reader && chatModel ? chatModel.requestInProgress.read(reader) : chatModel?.requestInProgress.get() ?? false;
-		const lastRequest = reader && chatModel ? chatModel.lastRequestObs.read(reader) : chatModel?.lastRequest;
-		this._model.setSubmissionState({
-			requestInProgress,
-			supportsSteering: !lastRequest?.isHiddenFromTranscript,
-			preferredPendingKind: this._configurationService.getValue<string>(ChatConfiguration.RequestQueueingDefaultAction) === 'steer'
-				? ComposerSubmitKind.Steering
-				: ComposerSubmitKind.Queued,
-		});
-	}
-
-	private _getComposerAttachments(widget: IChatWidget): IComposerAttachment[] {
-		const result: IComposerAttachment[] = [];
-		for (const entry of widget.inputPart.attachmentModel.attachments) {
-			let resource = IChatRequestVariableEntry.toUri(entry);
-			for (const reference of entry.references ?? []) {
-				if (!resource && URI.isUri(reference.reference)) {
-					resource = reference.reference;
-				}
-			}
-			if (!resource || (entry.kind !== 'file' && entry.kind !== 'image')) {
-				continue;
-			}
-			result.push({
-				id: entry.id,
-				kind: entry.kind,
-				resource,
-				mimeType: entry.kind === 'image'
-					? entry.mimeType ?? getMediaMime(resource.path) ?? 'image/*'
-					: getMediaMime(resource.path) ?? 'application/octet-stream',
-			});
-		}
-		return result;
-	}
-
-	private _syncAttachmentsToWidget(widget: IChatWidget, attachments: readonly IComposerAttachment[]): void {
-		const attachmentModel = widget.inputPart.attachmentModel;
-		const current = new Map(this._getComposerAttachments(widget).map(attachment => [attachment.id, attachment]));
-		const nextIds = new Set(attachments.map(attachment => attachment.id));
-		const deleted = Array.from(current.keys()).filter(id => !nextIds.has(id));
-		const added = attachments
-			.filter(attachment => !current.has(attachment.id))
-			.map(attachment => ({
-				id: attachment.id,
-				kind: attachment.kind,
-				name: basename(attachment.resource) || attachment.resource.toString(),
-				value: attachment.resource,
-				...(attachment.kind === 'image' ? { mimeType: attachment.mimeType } : {}),
-			} satisfies IChatRequestVariableEntry));
-		attachmentModel.updateContext(deleted, added);
-	}
-
-	private _sameAttachments(first: readonly IComposerAttachment[], second: readonly IComposerAttachment[]): boolean {
-		return first.length === second.length && first.every((attachment, index) => {
-			const other = second[index];
-			return attachment.id === other.id && attachment.kind === other.kind && attachment.resource.toString() === other.resource.toString() && attachment.mimeType === other.mimeType;
-		});
-	}
-
-	private async _submit(draft: IComposerDraft, kind: ComposerSubmitKind): Promise<void> {
-		const widget = this._boundWidget;
-		if (!widget) {
-			throw new Error(localize('floatingComposer.noChat', "Open a chat before sending a prompt."));
-		}
-
-		this._syncAttachmentsToWidget(widget, draft.attachments);
-		const queue = kind === ComposerSubmitKind.Send
-			? undefined
-			: kind === ComposerSubmitKind.Steering ? ChatRequestQueueKind.Steering : ChatRequestQueueKind.Queued;
-		await new Promise<void>((resolve, reject) => {
-			let accepted = false;
-			void widget.acceptInput(draft.text, {
-				queue,
-				onRequestAccepted: () => {
-					accepted = true;
-					resolve();
-				},
-			}).then(() => {
-				if (!accepted) {
-					reject(new Error(localize('floatingComposer.requestNotAccepted', "The chat request was not accepted.")));
-				}
-			}, error => {
-				if (accepted) {
-					onUnexpectedError(error);
-				} else {
-					reject(error);
-				}
-			});
-		});
-	}
-
-	override dispose(): void {
-		this._boundWidget = undefined;
-		this._widgetRegistrations.clear();
-		super.dispose();
-	}
-}
-
-class ToggleFloatingComposerAction extends Action2 {
-	constructor() {
-		super({
-			id: 'workbench.action.chat.toggleFloatingComposer',
-			title: localize2('toggleFloatingComposer', "Toggle Floating Chat Composer"),
-			icon: Codicon.commentDiscussion,
-			f1: true,
-		});
-	}
-
-	run(accessor: ServicesAccessor): void {
-		accessor.get(IFloatingComposerService).toggle();
-	}
-}
-
-registerSingleton(IFloatingComposerService, FloatingComposerService, InstantiationType.Delayed);
-registerAction2(ToggleFloatingComposerAction);

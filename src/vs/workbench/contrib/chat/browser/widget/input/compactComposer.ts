@@ -1,3 +1,4 @@
+/* eslint-disable header/header */
 import type * as React from 'react';
 import type { Root } from 'react-dom/client';
 import { importAMDNodeModule } from '../../../../../../amdX.js';
@@ -59,6 +60,9 @@ const iconClassNames: Readonly<Record<ComposerPluginIcon, string>> = {
 	model: 'codicon codicon-sparkle',
 	tools: 'codicon codicon-settings-compact',
 	voice: 'codicon codicon-mic',
+	newThread: 'codicon codicon-comment-discussion',
+	threads: 'codicon codicon-list-flat',
+	fix: 'codicon codicon-lightbulb',
 };
 
 export interface ICompactComposerPluginActivationContext extends IComposerPluginActivationContext {
@@ -139,15 +143,17 @@ function CompactComposer({ model }: { readonly model: ComposerModel<ICompactComp
 	snapshot.draft.attachments.length ? ReactRuntime.createElement('div', {
 		className: 'flex flex-wrap items-center gap-1',
 	}, ...snapshot.draft.attachments.map(attachment => {
-		const label = basename(attachment.resource) || attachment.resource.toString();
+		const label = attachment.kind === 'context' ? attachment.label : (basename(attachment.resource) || attachment.resource.toString());
+		const title = attachment.kind === 'context' ? (attachment.detail ?? attachment.label) : attachment.resource.toString();
 		return ReactRuntime.createElement('span', {
 			className: 'inline-flex min-w-0 items-center gap-1 rounded-full bg-accent px-2 py-1 text-label',
 			key: attachment.id,
-			title: attachment.resource.toString(),
+			title,
 		},
+		attachment.number !== undefined ? ReactRuntime.createElement('span', { className: 'composer-attachment-number' }, `#${attachment.number}`) : null,
 		ReactRuntime.createElement('span', {
 			'aria-hidden': true,
-			className: attachment.kind === 'image' ? 'codicon codicon-file-media' : 'codicon codicon-file',
+			className: attachment.kind === 'image' ? 'codicon codicon-file-media' : attachment.kind === 'context' ? 'codicon codicon-list-selection' : 'codicon codicon-file',
 		}),
 		ReactRuntime.createElement('span', { className: 'max-w-40 truncate' }, label),
 		ReactRuntime.createElement('button', {
@@ -187,7 +193,10 @@ function CompactComposer({ model }: { readonly model: ComposerModel<ICompactComp
 			})),
 		),
 	),
-	snapshot.error ? ReactRuntime.createElement('span', { className: 'sr-only', role: 'alert' }, snapshot.error) : null,
+	snapshot.diagnostics.length ? ReactRuntime.createElement('ul', { className: 'composer-diagnostics', role: 'alert' },
+		...snapshot.diagnostics.map(diagnostic => ReactRuntime.createElement('li', { key: `${diagnostic.kind}-${diagnostic.number}` }, diagnostic.message)),
+	) : null,
+	snapshot.error ? ReactRuntime.createElement('span', { className: 'composer-error', role: 'alert' }, snapshot.error) : null,
 	);
 }
 
