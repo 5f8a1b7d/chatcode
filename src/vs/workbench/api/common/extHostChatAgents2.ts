@@ -954,11 +954,30 @@ export class ExtHostChatAgents2 extends Disposable implements ExtHostChatAgentsS
 		if (!model) {
 			model = await this._languageModels.getDefaultLanguageModel(extension);
 			if (!model) {
+				model = await this._getParticipantProvidedModel(extension); // latent fork
+			}
+			if (!model) {
 				throw new Error('Language model unavailable');
 			}
 		}
 
 		return model;
+	}
+
+	/**
+	 * Latent fork: a participant can route the request to another harness
+	 * without using `request.model`. When there is no default model, fall back
+	 * to a model supplied by the participant's own extension so its handler can
+	 * still run.
+	 */
+	private async _getParticipantProvidedModel(extension: IExtensionDescription): Promise<vscode.LanguageModelChat | undefined> {
+		for (const provider of extension.contributes?.languageModelChatProviders ?? []) {
+			const [model] = await this._languageModels.selectLanguageModels(extension, { vendor: provider.vendor });
+			if (model) {
+				return model;
+			}
+		}
+		return undefined;
 	}
 
 
