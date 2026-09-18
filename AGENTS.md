@@ -10,3 +10,6 @@ Before operating the Windows development host, Syncthing, SSH, the shared mihomo
 Code-OSS Windows build, read `docs/local-development-host.md` when it exists. This file is
 machine-specific and Git-ignored; verify live addresses and connectivity when observed state
 conflicts with it.
+
+# Copyright
+All new files are not belonging to MicroSoft, no copyright header should be added to new files.

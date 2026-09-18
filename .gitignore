@@ -60,3 +60,5 @@ dist
 
 docs/
 node_modules.local-before-external/
+screenshots/
+scripts/fixtures
