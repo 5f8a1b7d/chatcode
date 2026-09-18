@@ -1,0 +1,66 @@
+{
+  "name": "latent-provider",
+  "displayName": "%displayName%",
+  "description": "%description%",
+  "version": "0.2.0",
+  "publisher": "latentnote",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.105.0"
+  },
+  "main": "./out/extension",
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "capabilities": {
+    "virtualWorkspaces": true,
+    "untrustedWorkspaces": {
+      "supported": true
+    }
+  },
+  "contributes": {
+    "commands": [
+      {
+        "command": "latent.provider.manage",
+        "title": "%command.manage%",
+        "category": "%category%"
+      },
+      {
+        "command": "latentnote.manageProviders",
+        "title": "%command.manage%",
+        "category": "%category%"
+      },
+      {
+        "command": "latent.provider.configureCapability",
+        "title": "%command.configureCapability%",
+        "category": "%category%"
+      }
+    ],
+    "languageModelChatProviders": [
+      {
+        "vendor": "latentnote-catalog",
+        "displayName": "Provider Catalog"
+      }
+    ],
+    "configuration": {
+      "title": "%configuration.title%",
+      "properties": {
+        "latent.provider.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "%configuration.enabled.description%"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "catalog:compile": "node scripts/compile-provider-catalog.cjs",
+    "compile": "npm run catalog:compile && gulp compile-extension:latent-provider",
+    "catalog:check": "node scripts/compile-provider-catalog.cjs --check",
+    "watch": "gulp watch-extension:latent-provider",
+    "test": "node --test out/test/*.test.js && npm run catalog:check"
+  },
+  "devDependencies": {
+    "@types/node": "24.x"
+  }
+}

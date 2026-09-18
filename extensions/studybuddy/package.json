@@ -12,11 +12,9 @@
   "activationEvents": [
 	"onStartupFinished",
     "onCommand:latentnote.studyBuddy.explainSelection",
-	"onCommand:latentnote.studyBuddy.handleSystemSelectionAction",
     "onCommand:latentnote.studyBuddy.addToMemory",
     "onCommand:latentnote.studyBuddy.cancelExplain",
     "onCommand:latentnote.studyBuddy.setAccessToken",
-    "onCommand:latentnote.manageProviders",
     "onView:latentnote.studyBuddy.explanation"
   ],
   "capabilities": {
@@ -127,11 +125,6 @@
         "command": "latentnote.studyBuddy.setAccessToken",
         "title": "%command.setAccessToken%",
         "category": "%category%"
-      },
-      {
-        "command": "latentnote.manageProviders",
-        "title": "%command.manageProviders%",
-        "category": "%category%"
       }
     ],
     "menus": {
@@ -187,12 +180,6 @@
         "contents": "%view.explanation.welcome%"
       }
     ],
-    "languageModelChatProviders": [
-      {
-        "vendor": "latentnote-catalog",
-        "displayName": "Provider Catalog"
-      }
-    ],
     "configuration": {
       "title": "%configuration.title%",
       "properties": {
@@ -205,26 +192,14 @@
           "type": "string",
           "default": "",
           "description": "%configuration.projectId.description%"
-		},
-        "latentnote.studyBuddy.globalSelection.enabled": {
-		  "type": "boolean",
-		  "default": true,
-		  "description": "%configuration.globalSelection.enabled.description%"
-        },
-        "chat.customProviders.enabled": {
-          "type": "boolean",
-          "default": true,
-          "description": "%configuration.customProviders.enabled.description%"
         }
       }
     }
   },
   "scripts": {
-    "catalog:compile": "node scripts/compile-provider-catalog.cjs",
-    "compile": "npm run catalog:compile && gulp compile-extension:studybuddy",
-    "catalog:check": "node scripts/compile-provider-catalog.cjs --check",
+    "compile": "gulp compile-extension:studybuddy",
     "watch": "gulp watch-extension:studybuddy",
-    "test": "node --test out/test/*.test.js && npm run catalog:check"
+    "test": "node --test out/test/*.test.js"
   },
   "devDependencies": {
     "@types/node": "24.x"

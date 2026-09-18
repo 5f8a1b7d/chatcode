@@ -24,8 +24,8 @@ registerSingleton(ISideChatOpener, SideChatOpener, InstantiationType.Delayed);
 
 //#region --- workbench contributions
 
-// StudyBuddy system-wide text selection
-import '../../studyBuddySelection/electron-browser/studyBuddySelection.contribution.js';
+// Latent system-wide text selection and Selection Bar
+import '../../latentSelection/electron-browser/latentSelection.contribution.js';
 
 // Latent settings
 import '../browser/latentConfiguration.js';
@@ -40,5 +40,12 @@ registerWorkbenchContribution2(ThreadActionsContribution.ID, ThreadActionsContri
 
 // Sessions as a top-level search entry
 import '../browser/sessionsSearch/sessionsSearchView.js';
+
+// System-level floating window (new thread in the editor area, full-duplex voice)
+import './floatingWindow/floatingWindow.contribution.js';
+
+// One-time copy of Study Buddy provider credentials to the Provider extension
+import { ProviderSecretMigrationContribution } from '../browser/migration/providerSecretMigration.js';
+registerWorkbenchContribution2(ProviderSecretMigrationContribution.ID, ProviderSecretMigrationContribution, WorkbenchPhase.Eventually);
 
 //#endregion

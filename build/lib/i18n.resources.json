@@ -195,6 +195,18 @@
 			"project": "vscode-workbench"
 		},
 		{
+			"name": "vs/workbench/contrib/latentSelection",
+			"project": "vscode-workbench"
+		},
+		{
+			"name": "vs/platform/latentSelection",
+			"project": "vscode-workbench"
+		},
+		{
+			"name": "vs/platform/latentFloatingWindow",
+			"project": "vscode-workbench"
+		},
+		{
 			"name": "vs/workbench/contrib/quickaccess",
 			"project": "vscode-workbench"
 		},

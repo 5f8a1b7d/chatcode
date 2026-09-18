@@ -1,0 +1,101 @@
+{
+  "name": "latent-selection",
+  "displayName": "%displayName%",
+  "description": "%description%",
+  "version": "0.2.0",
+  "publisher": "latentnote",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.105.0"
+  },
+  "main": "./out/extension",
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "extensionDependencies": [],
+  "capabilities": {
+    "virtualWorkspaces": true,
+    "untrustedWorkspaces": {
+      "supported": true
+    }
+  },
+  "contributes": {
+    "commands": [
+      {
+        "command": "latent.selection.pin",
+        "title": "%command.pin%",
+        "category": "%category%"
+      },
+      {
+        "command": "latent.selection.unpin",
+        "title": "%command.unpin%",
+        "category": "%category%"
+      },
+      {
+        "command": "latent.selection.explainActive",
+        "title": "%command.explainActive%",
+        "category": "%category%",
+        "enablement": "editorHasSelection"
+      },
+      {
+        "command": "latent.selection.translateActive",
+        "title": "%command.translateActive%",
+        "category": "%category%",
+        "enablement": "editorHasSelection"
+      },
+      {
+        "command": "latent.selection.summarizeActive",
+        "title": "%command.summarizeActive%",
+        "category": "%category%",
+        "enablement": "editorHasSelection"
+      }
+    ],
+    "menus": {
+      "editor/context": [
+        {
+          "command": "latent.selection.explainActive",
+          "when": "editorHasSelection",
+          "group": "latent@1"
+        },
+        {
+          "command": "latent.selection.translateActive",
+          "when": "editorHasSelection",
+          "group": "latent@2"
+        },
+        {
+          "command": "latent.selection.summarizeActive",
+          "when": "editorHasSelection",
+          "group": "latent@3"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "%configuration.title%",
+      "properties": {
+        "latent.selection.system.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "%configuration.system.enabled.description%"
+        },
+        "latent.selection.translate.targetLanguage": {
+          "type": "string",
+          "default": "os",
+          "enum": ["os", "en", "zh-CN", "zh-TW", "ja", "ko", "de", "fr", "es", "pt-BR", "it", "ru"],
+          "enumDescriptions": [
+            "%configuration.translate.os%",
+            "English", "中文（简体）", "中文（繁體）", "日本語", "한국어", "Deutsch", "Français", "Español", "Português (Brasil)", "Italiano", "Русский"
+          ],
+          "description": "%configuration.translate.targetLanguage.description%"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "gulp compile-extension:latent-selection",
+    "watch": "gulp watch-extension:latent-selection",
+    "test": "node --test out/test/*.test.js"
+  },
+  "devDependencies": {
+    "@types/node": "24.x"
+  }
+}

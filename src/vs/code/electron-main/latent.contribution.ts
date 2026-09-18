@@ -3,9 +3,12 @@ import { Server as ElectronIPCServer } from '../../base/parts/ipc/electron-main/
 import { SyncDescriptor } from '../../platform/instantiation/common/descriptors.js';
 import { ServicesAccessor } from '../../platform/instantiation/common/instantiation.js';
 import { ServiceCollection } from '../../platform/instantiation/common/serviceCollection.js';
-import { IStudyBuddySelectionService, STUDY_BUDDY_SELECTION_CHANNEL } from '../../platform/studyBuddySelection/common/studyBuddySelection.js';
-import { StudyBuddySelectionChannel } from '../../platform/studyBuddySelection/common/studyBuddySelectionIpc.js';
-import { StudyBuddySelectionMainService } from '../../platform/studyBuddySelection/electron-main/studyBuddySelectionMainService.js';
+import { ILatentSelectionService, LATENT_SELECTION_CHANNEL } from '../../platform/latentSelection/common/latentSelection.js';
+import { LatentSelectionChannel } from '../../platform/latentSelection/common/latentSelectionIpc.js';
+import { LatentSelectionMainService } from '../../platform/latentSelection/electron-main/latentSelectionMainService.js';
+import { ILatentFloatingWindowService, LATENT_FLOATING_WINDOW_CHANNEL } from '../../platform/latentFloatingWindow/common/latentFloatingWindow.js';
+import { LatentFloatingWindowChannel } from '../../platform/latentFloatingWindow/common/latentFloatingWindowIpc.js';
+import { LatentFloatingWindowMainService } from '../../platform/latentFloatingWindow/electron-main/latentFloatingWindowMainService.js';
 
 /**
  * Fork-owned registration seam for main-process services added by Latent.
@@ -13,8 +16,10 @@ import { StudyBuddySelectionMainService } from '../../platform/studyBuddySelecti
  * ever touch those single call sites.
  */
 export function registerLatentMainServices(services: ServiceCollection): void {
-	// StudyBuddy system-wide text selection
-	services.set(IStudyBuddySelectionService, new SyncDescriptor(StudyBuddySelectionMainService, undefined, false));
+	// Latent system-wide text selection and Selection Bar
+	services.set(ILatentSelectionService, new SyncDescriptor(LatentSelectionMainService, undefined, false));
+	// Latent system-level floating window
+	services.set(ILatentFloatingWindowService, new SyncDescriptor(LatentFloatingWindowMainService, undefined, false));
 }
 
 /**
@@ -22,7 +27,8 @@ export function registerLatentMainServices(services: ServiceCollection): void {
  * service instances are available.
  */
 export function registerLatentMainChannels(accessor: ServicesAccessor, mainProcessElectronServer: ElectronIPCServer): void {
-	// StudyBuddy system-wide text selection
-	const studyBuddySelectionChannel = new StudyBuddySelectionChannel(accessor.get(IStudyBuddySelectionService));
-	mainProcessElectronServer.registerChannel(STUDY_BUDDY_SELECTION_CHANNEL, studyBuddySelectionChannel);
+	// Latent system-wide text selection and Selection Bar
+	mainProcessElectronServer.registerChannel(LATENT_SELECTION_CHANNEL, new LatentSelectionChannel(accessor.get(ILatentSelectionService)));
+	// Latent system-level floating window
+	mainProcessElectronServer.registerChannel(LATENT_FLOATING_WINDOW_CHANNEL, new LatentFloatingWindowChannel(accessor.get(ILatentFloatingWindowService)));
 }

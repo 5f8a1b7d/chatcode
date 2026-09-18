@@ -1,0 +1,14 @@
+{
+  "displayName": "Latent Selection",
+  "description": "System-wide and editor selection actions with a draggable, pinnable selection bar, explanations, translation, summaries, and an action extension point.",
+  "category": "Latent",
+  "command.pin": "Pin Selection Bar",
+  "command.unpin": "Unpin Selection Bar",
+  "command.explainActive": "Explain Selection",
+  "command.translateActive": "Translate Selection",
+  "command.summarizeActive": "Summarize Selection",
+  "configuration.title": "Latent Selection",
+  "configuration.system.enabled.description": "Show the selection bar when text is selected in other desktop applications.",
+  "configuration.translate.os": "Use the operating-system language.",
+  "configuration.translate.targetLanguage.description": "Target language for the Translate action. \"os\" resolves to the operating-system language at action time."
+}

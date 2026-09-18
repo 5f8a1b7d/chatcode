@@ -1,0 +1,9 @@
+{
+  "displayName": "Latent Provider",
+  "description": "Configure model providers and credentials, and expose text, image understanding, speech recognition, speech synthesis, and realtime voice through one capability model.",
+  "category": "Latent",
+  "command.manage": "Manage Providers",
+  "command.configureCapability": "Configure Provider for Capability",
+  "configuration.title": "Latent Provider",
+  "configuration.enabled.description": "Enable the provider catalog, its configuration interface, and the language models it exposes."
+}

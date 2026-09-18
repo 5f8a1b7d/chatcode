@@ -7,7 +7,7 @@ seams as possible, so that merging upstream stays cheap.
 ## Rules
 
 1. New behaviour goes in new files under a fork-specific folder name
-   (`studyspace`, `studyBuddySelection`, `studyBuddySession`, `extensions/studybuddy`).
+   (`latent`, `latentSelection`, `latentFloatingWindow`, `studyspace`, `studyBuddySession`, `extensions/latent-*`, `extensions/studybuddy`).
 2. Upstream files are touched only to register fork code, ideally with a single
    line delegating to a fork-owned entry file. Mark the line with a `Latent` comment.
 3. Never delete upstream code to make room for a fork feature. Hide it through
@@ -37,7 +37,7 @@ the list below, then run `npm run valid-layers-check` and `npm run typecheck-cli
 | `src/vs/platform/extensions/common/extensions.ts` | Added the optional `languageModelChatProviders` contribution field read by that fallback. |
 | `src/vs/workbench/contrib/chat/browser/widget/input/chatInputPart.ts` | Composer plugin hooks used by the compact and floating composers. |
 | `src/vs/workbench/contrib/chat/browser/widget/input/compactComposer.ts`, `src/vs/workbench/contrib/chat/common/composer/*` | Fork-owned composer model and compact renderer; they live in upstream folders because `chatInputPart.ts` depends on them. |
-| `build/gulpfile.extensions.ts`, `build/npm/dirs.ts` | Register `extensions/studybuddy` with the build. |
+| `build/gulpfile.extensions.ts`, `build/npm/dirs.ts` | Register `extensions/studybuddy`, `extensions/latent-provider`, and `extensions/latent-selection` with the build. |
 | `build/lib/i18n.resources.json` | Register fork folders for localisation. |
 | `package.json`, `package-lock.json` | Add the `selection-hook` native dependency. |
 | `.gitignore`, `AGENTS.md` | Fork housekeeping. |
@@ -46,6 +46,11 @@ the list below, then run `npm run valid-layers-check` and `npm run typecheck-cli
 
 - `src/vs/code/electron-main/latent.contribution.ts`: main-process services and channels.
 - `src/vs/workbench/contrib/latent/electron-browser/latent.contribution.ts`: workbench services and contributions.
-- `src/vs/workbench/contrib/latent/browser/floatingComposer`: the floating chat composer.
-- `extensions/studybuddy`: the Study Buddy extension.
+- `src/vs/workbench/contrib/latent/browser/floatingComposer`: the per-tab floating chat composer.
+- `src/vs/workbench/contrib/latent/browser/{drafts,threads,sideChat,sessionsSearch,migration}`: drafts, thread branching, side chat, Sessions search, credential migration (spec 01/02).
+- `src/vs/workbench/contrib/latentSelection`, `src/vs/platform/latentSelection`: the Selection Bar and the system-wide selection listener.
+- `src/vs/platform/latentFloatingWindow`, `src/vs/workbench/contrib/latent/electron-browser/floatingWindow`: the system-level floating window and its voice session.
+- `extensions/latent-provider`: provider configuration, credentials, and the capability model.
+- `extensions/latent-selection`: selection actions and the action extension point.
+- `extensions/studybuddy`: the remaining Study Buddy learning features (moved to the private plugin by spec 03).
 - `specs/`: formal specifications for the three-part AI workbench (Parts 1 and 2 are committed; Part 3 is local-only and ignored).

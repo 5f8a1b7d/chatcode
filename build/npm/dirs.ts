@@ -35,6 +35,8 @@ export const dirs = [
 	'extensions/json-language-features',
 	'extensions/json-language-features/server',
 	'extensions/studybuddy',
+	'extensions/latent-provider',
+	'extensions/latent-selection',
 	'extensions/markdown-language-features',
 	'extensions/markdown-math',
 	'extensions/media-preview',
