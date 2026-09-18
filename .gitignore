@@ -54,3 +54,11 @@ dist
 .v[0-9]*/
 # Local agent validation evidence
 .agent-validation/
+
+.stfolder/
+.stignore
+
+docs/
+node_modules.local-before-external/
+screenshots/
+scripts/fixtures

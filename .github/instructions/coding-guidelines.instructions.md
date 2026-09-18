@@ -57,7 +57,6 @@ Use tabs, not spaces.
 
 ## Code Quality
 
-- Include Microsoft copyright header in all files
 - Prefer `async`/`await` over `Promise.then()`
 - Localize all user-facing messages
 - Prefer named regex capture groups over numbered ones

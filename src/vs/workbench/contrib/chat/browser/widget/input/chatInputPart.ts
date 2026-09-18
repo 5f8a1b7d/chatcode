@@ -90,6 +90,7 @@ import { AccessibilityCommandId } from '../../../../accessibility/common/accessi
 import { getSimpleCodeEditorWidgetOptions, getSimpleEditorOptions, setupSimpleEditorSelectionStyling } from '../../../../codeEditor/browser/simpleEditorOptions.js';
 import { IChatViewTitleActionContext } from '../../../common/actions/chatActions.js';
 import { ChatContextKeys } from '../../../common/actions/chatContextKeys.js';
+import { IComposerPlugin } from '../../../common/composer/composerContracts.js';
 import { ChatRequestVariableSet, getImageAttachmentLimit, IChatRequestVariableEntry, isPastedTextArtifact, isAgentHostCompletionVariableEntry, isBrowserViewVariableEntry, isElementVariableEntry, isExplicitFileOrImageVariableEntry, isImageVariableEntry, isNotebookOutputVariableEntry, isPasteVariableEntry, isPromptFileVariableEntry, isPromptTextVariableEntry, isSCMHistoryItemChangeRangeVariableEntry, isSCMHistoryItemChangeVariableEntry, isSCMHistoryItemVariableEntry, OmittedState } from '../../../common/attachments/chatVariableEntries.js';
 import { ChatMode, getModeNameForTelemetry, IChatMode, IChatModes, IChatModeService } from '../../../common/chatModes.js';
 import { IChatFollowup, IChatPlanReview, IChatQuestionCarousel, IChatService, IChatToolInvocation } from '../../../common/chatService/chatService.js';
@@ -102,6 +103,7 @@ import { ILanguageModelChatMetadata, ILanguageModelChatMetadataAndIdentifier, IL
 import { ChatInputModelSelectionController, IChatInputModelSelectionRuntime } from './chatInputModelSelectionController.js';
 import { ChatModelConfigurationStore } from './chatModelConfigurationStore.js';
 import { ChatModelSelectionDiagnostics } from './chatModelSelectionDiagnostics.js';
+import type { ICompactComposerPluginActivationContext } from './compactComposer.js';
 import { deserializeUntitledInputAttachments, deserializeUntitledInputState, serializeUntitledInputAttachments, serializeUntitledInputState } from './chatInputStatePersistence.js';
 import { ChatInputStateOrigin, IChatModel, IChatModelInputState, IChatRequestModeInfo, IChatRequestModel, IInputModel, IIntendedModelHolder, IntendedModelSlot, logChangesToStateModel } from '../../../common/model/chatModel.js';
 import { isInConversationModelChoice, ModelSelectionReason, resolveConfiguredModel, RestoredModelReason } from '../../../common/modelSelection.js';
@@ -724,6 +726,7 @@ export class ChatInputPart extends Disposable implements IHistoryNavigationWidge
 	private chatSessionHasCustomAgentTarget: IContextKey<boolean>;
 	private chatSessionHasTargetedModels: IContextKey<boolean>;
 	private modelWidget: ModelPickerActionItem | undefined;
+	private readonly _onDidChangeComposerPlugins = this._register(new Emitter<void>());
 	private modeWidget: ModePickerActionItem | undefined;
 	private permissionWidget: PermissionPickerActionItem | undefined;
 	private readonly permissionWidgetDisposeListener = this._register(new MutableDisposable<IDisposable>());
@@ -991,6 +994,10 @@ export class ChatInputPart extends Disposable implements IHistoryNavigationWidge
 		};
 		this._modelSelectionController = this._register(new ChatInputModelSelectionController(this._modelSelectionRuntime, this._modelSelectionDiagnostics));
 		this._currentLanguageModel = this._modelSelectionController.currentModel;
+		this._register(autorun(reader => {
+			this._currentLanguageModel.read(reader);
+			this._onDidChangeComposerPlugins.fire();
+		}));
 		this._register(this.storageService.onDidChangeValue(StorageScope.PROFILE, undefined, this._store)(event => {
 			this._modelSelectionDiagnostics.logStorageChange(event, this._currentLanguageModel.get()?.identifier);
 		}));
@@ -1242,6 +1249,8 @@ export class ChatInputPart extends Disposable implements IHistoryNavigationWidge
 			const mode = this._currentModeObservable.read(r);
 			this.chatModeKindKey.set(mode.kind);
 			this.chatModeNameKey.set(mode.name.read(r));
+			mode.label.read(r);
+			this._onDidChangeComposerPlugins.fire();
 			if (this.options.suppressModePreferredModel) {
 				return;
 			}
@@ -1384,20 +1393,142 @@ export class ChatInputPart extends Disposable implements IHistoryNavigationWidge
 		this.setCurrentLanguageModel(pinnedModels[nextIndex], true);
 	}
 
-	public openModelPicker(): void {
+	public openModelPicker(anchor?: HTMLElement): void {
 		if (this.chatPhoneInputPresenter.enabled.get()) {
 			this._showCombinedPhonePickerSheet();
 			return;
 		}
-		this.modelWidget?.show();
+		this.modelWidget?.show(anchor);
 	}
 
-	public openModePicker(): void {
+	/** Plugins that let alternate composer renderers reuse this input's native controls. */
+	public getComposerPlugins(): readonly IComposerPlugin<ICompactComposerPluginActivationContext>[] {
+		const attachContextPlugin = (id: string, placement: 'header' | 'leading', order: number, label: string): IComposerPlugin<ICompactComposerPluginActivationContext> => ({
+			id,
+			placement,
+			order,
+			onDidChange: this._onDidChangeComposerPlugins.event,
+			getState: () => ({
+				label,
+				icon: 'add',
+				disabled: !this._getComposerInputAction('workbench.action.chat.attachContext')?.enabled,
+			}),
+			activate: async () => {
+				await this._getComposerInputAction('workbench.action.chat.attachContext')?.run({ widget: this._widget } satisfies IChatExecuteActionContext);
+			},
+		});
+		const modePickerPlugin: IComposerPlugin<ICompactComposerPluginActivationContext> = {
+			id: 'chat.modePicker',
+			placement: 'leading',
+			order: 10,
+			onDidChange: this._onDidChangeComposerPlugins.event,
+			getState: () => ({
+				label: this._currentModeObservable.get().label.get(),
+				icon: 'mode',
+				presentation: 'iconLabel',
+				dropdown: true,
+				disabled: !this.modeWidget,
+			}),
+			activate: context => this.openModePicker(context?.anchor),
+		};
+		const modelPickerPlugin: IComposerPlugin<ICompactComposerPluginActivationContext> = {
+			id: 'chat.modelPicker',
+			placement: 'trailing',
+			order: 10,
+			onDidChange: this._onDidChangeComposerPlugins.event,
+			getState: () => ({
+				label: this._currentLanguageModel.get()?.metadata.name ?? localize('chat.modelPicker.modelsLabel', "Models"),
+				icon: 'model',
+				presentation: 'iconLabel',
+				dropdown: true,
+				disabled: !this.modelWidget,
+			}),
+			activate: context => this.openModelPicker(context?.anchor),
+		};
+		return [
+			attachContextPlugin('chat.quickAdd', 'header', 0, localize('chat.quickAdd', "Quick Add")),
+			attachContextPlugin('chat.addFiles', 'leading', 0, localize('chat.addFiles', "Add Files")),
+			modePickerPlugin,
+			modelPickerPlugin,
+			{
+				id: 'chat.toolConfiguration',
+				placement: 'trailing',
+				order: 20,
+				onDidChange: this._onDidChangeComposerPlugins.event,
+				getState: () => {
+					const action = this._getComposerInputAction(ConfigureToolsAction.ID);
+					return {
+						label: action?.label ?? localize('chat.configureTools', "Configure Tools"),
+						icon: 'tools',
+						disabled: !action?.enabled,
+					};
+				},
+				activate: async () => {
+					await this._getComposerInputAction(ConfigureToolsAction.ID)?.run({ widget: this._widget } satisfies IChatExecuteActionContext);
+				},
+			},
+			{
+				id: 'chat.voiceInput',
+				placement: 'trailing',
+				order: 30,
+				onDidChange: this._onDidChangeComposerPlugins.event,
+				getState: () => {
+					const action = this._getComposerVoiceAction();
+					return {
+						label: action?.label ?? localize('chat.voiceInput', "Voice Input"),
+						icon: 'voice',
+						disabled: !action?.enabled,
+						active: action?.id === 'agentsVoice.pttStopInChat' || this.speechToTextService.state !== ChatSpeechToTextState.Idle,
+					};
+				},
+				activate: async () => {
+					await this._getComposerVoiceAction()?.run({ widget: this._widget } satisfies IChatExecuteActionContext);
+				},
+			},
+		];
+	}
+
+	private _getComposerInputAction(id: string): IAction | undefined {
+		if (!this.inputActionsToolbar) {
+			return undefined;
+		}
+		for (let index = 0; ; index++) {
+			const action = this.inputActionsToolbar.getItemAction(index);
+			if (!action) {
+				return undefined;
+			}
+			if (action.id === id) {
+				return action;
+			}
+		}
+	}
+
+	private _getComposerVoiceAction(): IAction | undefined {
+		if (!this.executeToolbar) {
+			return undefined;
+		}
+		const ids = new Set([
+			'agentsVoice.startVoiceInChat',
+			'agentsVoice.pttStopInChat',
+			ToggleChatSpeechToTextAction.ID,
+		]);
+		for (let index = 0; ; index++) {
+			const action = this.executeToolbar.getItemAction(index);
+			if (!action) {
+				return undefined;
+			}
+			if (ids.has(action.id)) {
+				return action;
+			}
+		}
+	}
+
+	public openModePicker(anchor?: HTMLElement): void {
 		if (this.chatPhoneInputPresenter.enabled.get()) {
 			this._showCombinedPhonePickerSheet();
 			return;
 		}
-		this.modeWidget?.show();
+		this.modeWidget?.show(anchor);
 	}
 
 	private _showCombinedPhonePickerSheet(): void {
@@ -3380,6 +3511,7 @@ export class ChatInputPart extends Disposable implements IHistoryNavigationWidge
 			const active = isDictationActiveForEditor(this._inputEditor);
 			dictationRecording.set(active && this.speechToTextService.state === ChatSpeechToTextState.Recording);
 			dictationPreparing.set(active && this.speechToTextService.isPreparingModel);
+			this._onDidChangeComposerPlugins.fire();
 		};
 		this._register(Event.any(this.speechToTextService.onDidChangeState, this.speechToTextService.onDidChangePreparingModel, onDidChangeDictationEditor)(updateDictationContextKeys));
 		updateDictationContextKeys();
@@ -3646,6 +3778,7 @@ export class ChatInputPart extends Disposable implements IHistoryNavigationWidge
 		this.inputActionsToolbar.getElement().classList.add('chat-input-toolbar');
 		this.inputActionsToolbar.context = { widget } satisfies IChatExecuteActionContext;
 		this._register(this.inputActionsToolbar.onDidChangeMenuItems(() => {
+			this._onDidChangeComposerPlugins.fire();
 			// Update container reference for the pickers (cloud sessions host them in the primary toolbar)
 			const toolbarElement = this.inputActionsToolbar.getElement();
 			// eslint-disable-next-line no-restricted-syntax
@@ -3710,6 +3843,7 @@ export class ChatInputPart extends Disposable implements IHistoryNavigationWidge
 		}));
 		this.executeToolbar.getElement().classList.add('chat-execute-toolbar');
 		this.executeToolbar.context = { widget } satisfies IChatExecuteActionContext;
+		this._onDidChangeComposerPlugins.fire();
 		// The lone dictation / Voice Mode control drops its circular border and
 		// only regains it when both share the row (see the matching rules in
 		// chat.css). Count the voice-input actions from the toolbar's action
@@ -3735,6 +3869,7 @@ export class ChatInputPart extends Disposable implements IHistoryNavigationWidge
 		updateVoiceInputActionBorder();
 		this._register(this.executeToolbar.onDidChangeMenuItems(() => {
 			updateVoiceInputActionBorder();
+			this._onDidChangeComposerPlugins.fire();
 			if (this.cachedWidth && typeof this.cachedExecuteToolbarWidth === 'number' && this.cachedExecuteToolbarWidth !== this.executeToolbar.getItemsWidth()) {
 				this._toolbarRelayoutScheduler.schedule();
 			}

@@ -246,6 +246,7 @@ export interface IExtensionContributions {
 	readonly chatPlugins?: ReadonlyArray<IChatFileContribution>;
 	readonly languageModelTools?: ReadonlyArray<IToolContribution>;
 	readonly languageModelToolSets?: ReadonlyArray<IToolSetContribution>;
+	readonly languageModelChatProviders?: ReadonlyArray<{ vendor: string; displayName?: string }>;
 	readonly mcpServerDefinitionProviders?: ReadonlyArray<IMcpCollectionContribution>;
 }
 
