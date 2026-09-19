@@ -6629,6 +6629,9 @@ export class AgentHostSessionHandler extends Disposable implements IChatSessionC
 		if (v.kind === 'string' && typeof v.value === 'string') {
 			return this._toSimpleAttachment(v.name, v.value, v._meta, undefined, referenceRange);
 		}
+		if (v.kind === 'generic' && typeof v.value === 'string') {
+			return this._toSimpleAttachment(v.name, v.value, v._meta, undefined, referenceRange);
+		}
 		const agentHostCompletionKind = getAgentHostCompletionReferenceKind(v);
 		if (agentHostCompletionKind === AgentHostCompletionReferenceKind.Command) {
 			return this._toSimpleAttachment(v.name, undefined, v._meta, 'command', referenceRange);

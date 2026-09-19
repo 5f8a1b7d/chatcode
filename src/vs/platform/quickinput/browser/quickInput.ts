@@ -25,7 +25,7 @@ import Severity from '../../../base/common/severity.js';
 import { ThemeIcon } from '../../../base/common/themables.js';
 import './media/quickInput.css';
 import { localize } from '../../../nls.js';
-import { IInputBox, IKeyMods, IQuickInput, IQuickInputButton, IQuickInputHideEvent, IQuickNavigateConfiguration, IQuickPick, IQuickPickDidAcceptEvent, IQuickPickItem, IQuickPickItemButtonEvent, IQuickPickSeparator, IQuickPickSeparatorButtonEvent, IQuickPickWillAcceptEvent, IQuickWidget, ItemActivation, NO_KEY_MODS, QuickInputButtonLocation, QuickInputHideReason, QuickInputType, QuickPickFocus } from '../common/quickInput.js';
+import { IInputBox, IKeyMods, IQuickInput, IQuickInputButton, IQuickInputHideEvent, IQuickNavigateConfiguration, IQuickPick, IQuickPickAdditionalContent, IQuickPickDidAcceptEvent, IQuickPickItem, IQuickPickItemButtonEvent, IQuickPickSeparator, IQuickPickSeparatorButtonEvent, IQuickPickWillAcceptEvent, IQuickWidget, ItemActivation, NO_KEY_MODS, QuickInputButtonLocation, QuickInputHideReason, QuickInputType, QuickPickFocus } from '../common/quickInput.js';
 import { QuickInputBox } from './quickInputBox.js';
 import { quickInputButtonToAction, quickInputButtonsToActionArrays, renderQuickInputDescription } from './quickInputUtils.js';
 import { IConfigurationService } from '../../configuration/common/configuration.js';
@@ -147,6 +147,7 @@ export type Visibilities = {
 	tree?: boolean;
 	ok?: boolean;
 	customButton?: boolean;
+	widget?: boolean;
 	progressBar?: boolean;
 };
 
@@ -553,6 +554,8 @@ export class QuickPick<T extends IQuickPickItem, O extends { useSeparators: bool
 	private readonly onDidChangeSelectionEmitter = this._register(new Emitter<T[]>());
 	private readonly onDidTriggerItemButtonEmitter = this._register(new Emitter<IQuickPickItemButtonEvent<T>>());
 	private readonly onDidTriggerSeparatorButtonEmitter = this._register(new Emitter<IQuickPickSeparatorButtonEvent>());
+	private _additionalContent: IQuickPickAdditionalContent | undefined;
+	private additionalContentUpdated = false;
 	private _valueSelection: Readonly<[number, number]> | undefined;
 	private valueSelectionUpdated = true;
 	private _ok: boolean | 'default' = 'default';
@@ -642,6 +645,18 @@ export class QuickPick<T extends IQuickPickItem, O extends { useSeparators: bool
 	onDidAccept = this.onDidAcceptEmitter.event;
 
 	onDidCustom = this.onDidCustomEmitter.event;
+
+	get additionalContent() {
+		return this._additionalContent;
+	}
+
+	set additionalContent(additionalContent: IQuickPickAdditionalContent | undefined) {
+		if (this._additionalContent !== additionalContent) {
+			this._additionalContent = additionalContent;
+			this.additionalContentUpdated = true;
+			this.update();
+		}
+	}
 
 	get items() {
 		return this._items;
@@ -888,6 +903,7 @@ export class QuickPick<T extends IQuickPickItem, O extends { useSeparators: bool
 	}
 
 	override show() {
+		this.additionalContentUpdated = true;
 		if (!this.visible) {
 			this.visibleDisposables.add(
 				this.ui.inputBox.onDidChange(value => {
@@ -1045,10 +1061,19 @@ export class QuickPick<T extends IQuickPickItem, O extends { useSeparators: bool
 			ok: this.ok === 'default' ? this.canSelectMany : this.ok,
 			list: true,
 			message: !!this.validationMessage || !!this.prompt,
-			customButton: this.customButton
+			customButton: this.customButton,
+			widget: !!this.additionalContent
 		};
 		this.ui.setVisibilities(visibilities);
 		super.update();
+		if (this.additionalContentUpdated) {
+			this.additionalContentUpdated = false;
+			if (this.additionalContent) {
+					dom.reset(this.ui.widget, this.additionalContent.element as HTMLElement);
+			} else {
+				dom.reset(this.ui.widget);
+			}
+		}
 		if (this.ui.inputBox.value !== this.value) {
 			this.ui.inputBox.value = this.value;
 		}
@@ -1348,7 +1373,8 @@ export class QuickWidget extends QuickInput implements IQuickWidget {
 		}
 		this.ui.setVisibilities({
 			title: !!this.title || !!this.step || !!this.titleButtons.length,
-			description: !!this.description || !!this.step
+			description: !!this.description || !!this.step,
+			widget: !!this.widget
 		});
 		if (this._widgetUpdated) {
 			this._widgetUpdated = false;

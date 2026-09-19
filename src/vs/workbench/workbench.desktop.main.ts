@@ -210,6 +210,9 @@ import './contrib/keybindingsExport/electron-browser/keybindingsExport.contribut
 // System-wide (OS global) Keybindings
 import './contrib/keybindings/electron-browser/systemWideKeybindings.contribution.js';
 
+// Latent fork services and contributions
+import './contrib/latent/electron-browser/latent.contribution.js';
+
 //#endregion
 
 

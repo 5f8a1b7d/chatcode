@@ -125,6 +125,7 @@ import { AgentSessionProviders, AgentSessionTarget, getAgentSessionProvider } fr
 import { getAgentSessionPullRequestContextValue } from '../../agentSessions/agentSessionsModel.js';
 import { IAgentSessionsService } from '../../agentSessions/agentSessionsService.js';
 import { ChatAttachmentModel } from '../../attachments/chatAttachmentModel.js';
+import type { ChatAttachmentNumbering } from '../../../../latent/browser/attachmentNumbering.js';
 import { IChatAttachmentWidgetRegistry } from '../../attachments/chatAttachmentWidgetRegistry.js';
 import { DefaultChatAttachmentWidget, ElementChatAttachmentWidget, FileAttachmentWidget, ImageAttachmentWidget, BrowserViewAttachmentWidget, NotebookCellOutputChatAttachmentWidget, PasteAttachmentWidget, PromptFileAttachmentWidget, PromptTextAttachmentWidget, SCMHistoryItemAttachmentWidget, SCMHistoryItemChangeAttachmentWidget, SCMHistoryItemChangeRangeAttachmentWidget, TerminalCommandAttachmentWidget, ToolSetOrToolItemAttachmentWidget } from '../../attachments/chatAttachmentWidgets.js';
 import { ChatImplicitContexts } from '../../attachments/chatImplicitContext.js';
@@ -342,6 +343,8 @@ export interface IChatInputPartOptions {
 	 * can pass `0` so the editor fills the box and its scrollbar sits at the edge.
 	 */
 	inputPartHorizontalPadding?: number;
+	/** Latent: creates the Attachment Numbers strategy of this input; numbering is off when absent. */
+	createAttachmentNumbering?: () => ChatAttachmentNumbering;
 }
 
 export interface IWorkingSetEntry {
@@ -465,7 +468,7 @@ export class ChatInputPart extends Disposable implements IHistoryNavigationWidge
 
 		if (this.implicitContext) {
 			const implicitChatVariables = this.implicitContext.enabledBaseEntries(this.configurationService.getValue<boolean>('chat.implicitContext.suggestedContext'));
-			contextArr.add(...implicitChatVariables);
+			contextArr.add(...this.attachmentModel.numbering?.numberImplicitContexts(implicitChatVariables, this.attachmentModel.attachments) ?? implicitChatVariables); // Latent
 		}
 		return contextArr;
 	}
@@ -774,6 +777,10 @@ export class ChatInputPart extends Disposable implements IHistoryNavigationWidge
 		return this.getModels();
 	}
 
+	private readonly _onDidChangeToolbarActions = this._register(new Emitter<void>());
+	/** Latent: fires when {@link getToolbarActions} may return different actions or enablement. */
+	readonly onDidChangeToolbarActions: Event<void> = this._onDidChangeToolbarActions.event;
+
 	private _onDidChangeCurrentChatMode: Emitter<IChatModeChangeEvent> = this._register(new Emitter<IChatModeChangeEvent>());
 	readonly onDidChangeCurrentChatMode: Event<IChatModeChangeEvent> = this._onDidChangeCurrentChatMode.event;
 
@@ -1065,6 +1072,7 @@ export class ChatInputPart extends Disposable implements IHistoryNavigationWidge
 		}
 
 		this._attachmentModel = this._register(this.instantiationService.createInstance(ChatAttachmentModel));
+		this._attachmentModel.numbering = this.options.createAttachmentNumbering?.(); // Latent
 		const attachmentModel = this._attachmentModel;
 		this._register(this._attachmentModel.onDidChange(() => {
 			if (this._chatSessionIsEmpty) {
@@ -1391,20 +1399,34 @@ export class ChatInputPart extends Disposable implements IHistoryNavigationWidge
 		this.setCurrentLanguageModel(pinnedModels[nextIndex], true);
 	}
 
-	public openModelPicker(): void {
+	public openModelPicker(anchor?: HTMLElement): void {
 		if (this.chatPhoneInputPresenter.enabled.get()) {
 			this._showCombinedPhonePickerSheet();
 			return;
 		}
-		this.modelWidget?.show();
+		this.modelWidget?.show(anchor);
 	}
 
-	public openModePicker(): void {
+	public openModePicker(anchor?: HTMLElement): void {
 		if (this.chatPhoneInputPresenter.enabled.get()) {
 			this._showCombinedPhonePickerSheet();
 			return;
 		}
-		this.modeWidget?.show();
+		this.modeWidget?.show(anchor);
+	}
+
+	/** Latent: actions currently shown in the input and execute toolbars, for alternate composer renderers. */
+	public getToolbarActions(): readonly IAction[] {
+		const actions: IAction[] = [];
+		for (const toolbar of [this.inputActionsToolbar, this.executeToolbar]) {
+			for (let index = 0; toolbar && index < toolbar.getItemsLength(); index++) {
+				const action = toolbar.getItemAction(index);
+				if (action) {
+					actions.push(action);
+				}
+			}
+		}
+		return actions;
 	}
 
 	private _showCombinedPhonePickerSheet(): void {
@@ -3653,6 +3675,7 @@ export class ChatInputPart extends Disposable implements IHistoryNavigationWidge
 		this.inputActionsToolbar.getElement().classList.add('chat-input-toolbar');
 		this.inputActionsToolbar.context = { widget } satisfies IChatExecuteActionContext;
 		this._register(this.inputActionsToolbar.onDidChangeMenuItems(() => {
+			this._onDidChangeToolbarActions.fire(); // Latent
 			// Update container reference for the pickers (cloud sessions host them in the primary toolbar)
 			const toolbarElement = this.inputActionsToolbar.getElement();
 			// eslint-disable-next-line no-restricted-syntax
@@ -3717,6 +3740,7 @@ export class ChatInputPart extends Disposable implements IHistoryNavigationWidge
 		}));
 		this.executeToolbar.getElement().classList.add('chat-execute-toolbar');
 		this.executeToolbar.context = { widget } satisfies IChatExecuteActionContext;
+		this._onDidChangeToolbarActions.fire(); // Latent
 		// The lone dictation / Voice Mode control drops its circular border and
 		// only regains it when both share the row (see the matching rules in
 		// chat.css). Count the voice-input actions from the toolbar's action
@@ -3742,6 +3766,7 @@ export class ChatInputPart extends Disposable implements IHistoryNavigationWidge
 		updateVoiceInputActionBorder();
 		this._register(this.executeToolbar.onDidChangeMenuItems(() => {
 			updateVoiceInputActionBorder();
+			this._onDidChangeToolbarActions.fire(); // Latent
 			if (this.cachedWidth && typeof this.cachedExecuteToolbarWidth === 'number' && this.cachedExecuteToolbarWidth !== this.executeToolbar.getItemsWidth()) {
 				this._toolbarRelayoutScheduler.schedule();
 			}
@@ -4174,7 +4199,7 @@ export class ChatInputPart extends Disposable implements IHistoryNavigationWidge
 			const shouldFocusClearButton = index === Math.min(this._indexOfLastAttachedContextDeletedWithKeyboard, attachments.length - 1) && this._indexOfLastAttachedContextDeletedWithKeyboard > -1;
 
 			let attachmentWidget;
-			const options = { shouldFocusClearButton, supportsDeletion: true, isCurrentInput: true };
+			const options = { shouldFocusClearButton, supportsDeletion: !attachment.isReadOnly, isCurrentInput: true };
 			const lm = this._currentLanguageModel.get();
 			if (attachment.kind === 'tool' || attachment.kind === 'toolset') {
 				attachmentWidget = this.instantiationService.createInstance(ToolSetOrToolItemAttachmentWidget, attachment, lm, options, container, this._contextResourceLabels);

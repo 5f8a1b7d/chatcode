@@ -228,6 +228,11 @@ export const copyrightFilter = Object.freeze<string[]>([
 
 	// extensions/copilot has its own code style
 	'!extensions/copilot/**',
+
+	// Latent fork: fork-owned files carry no Microsoft header (see FORK.md)
+	'!extensions/latent-*/**',
+	'!src/vs/**/latent*/**',
+	'!src/vs/**/latent*.ts',
 ]);
 
 export const tsFormattingFilter = Object.freeze<string[]>([

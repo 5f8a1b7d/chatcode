@@ -54,3 +54,17 @@ dist
 .v[0-9]*/
 # Local agent validation evidence
 .agent-validation/
+
+.stfolder/
+.stignore
+
+docs/
+node_modules.local-before-external/
+screenshots/
+scripts/fixtures
+
+# Legacy local copy of Part 3; the tracked private specification lives in latent-private/specs/
+/specs/03-private-derivative.md
+# Derivative build sources and the workbench overlay they place into src/ (kept out of this repository)
+/latent-private/
+/src/vs/workbench/contrib/latentPrivate/

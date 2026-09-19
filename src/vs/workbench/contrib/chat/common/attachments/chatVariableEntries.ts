@@ -64,6 +64,12 @@ interface IBaseChatRequestVariableEntry {
 	readonly id: string;
 	readonly fullName?: string;
 	readonly icon?: ThemeIcon;
+	/** Latent: whether an embedding host owns this context item and the user cannot remove it. */
+	readonly isReadOnly?: boolean;
+	/** Latent: Attachment Number, set only when the input opts into numbering. */
+	readonly attachmentNumber?: number;
+	/** Latent: MIME type shown in the `#<number>:<MIME>` token of a numbered attachment. */
+	readonly attachmentMimeType?: string;
 	readonly name: string;
 	readonly modelDescription?: string;
 

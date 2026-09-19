@@ -21,6 +21,8 @@ export const variableReg = /^#([\w_\-]+)(:\d+)?(?=(\s|$|\b))/i; // A #-variable 
 export const slashReg = /^\/([\p{L}\d_\-\.:]+)(?=(\s|$|\b))/iu; // A / command
 
 export interface IChatParserContext {
+	/** Host-supplied attachment references for this exact submitted input. */
+	attachmentReferences?: readonly IDynamicVariable[];
 	/** Used only as a disambiguator, when the query references an agent that has a duplicate with the same name. */
 	selectedAgent?: IChatAgentData;
 	mode?: ChatModeKind;
@@ -39,7 +41,7 @@ export class ChatRequestParser {
 	) { }
 
 	parseChatRequest(sessionResource: URI, message: string, location: ChatAgentLocation = ChatAgentLocation.Chat, context: IChatParserContext = {}): IParsedChatRequest {
-		const references = this.variableService.getDynamicVariables(sessionResource); // must access this list before any async calls
+		const references = [...(context.attachmentReferences ?? []), ...this.variableService.getDynamicVariables(sessionResource)]; // must access this list before any async calls
 		const selectedToolAndToolSets = this.variableService.getSelectedToolAndToolSets(sessionResource);
 		if (!context.sessionType) {
 			context = { ...context, sessionType: getChatSessionType(sessionResource) };

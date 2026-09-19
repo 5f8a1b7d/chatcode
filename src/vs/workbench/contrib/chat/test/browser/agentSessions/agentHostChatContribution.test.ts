@@ -9698,6 +9698,37 @@ suite('AgentHostChatContribution', () => {
 
 	suite('attachment context', () => {
 
+		test('generic text variable becomes a model-readable simple attachment', () => runWithFakedTimers({ useFakeTimers: true }, async () => {
+			const { sessionHandler, agentHostService, chatAgentService } = createContribution(disposables);
+
+			const { turnPromise, session, turnId, fire } = await startTurn(sessionHandler, agentHostService, chatAgentService, disposables, {
+				message: 'what does this mean?',
+				variables: {
+					variables: [
+						upcastPartial({
+							kind: 'generic',
+							id: 'latent-selection',
+							name: 'Selection (thread)',
+							value: 'the selected response text',
+							modelDescription: 'Text selected from a chat response.',
+							_meta: { source: 'thread' },
+						}),
+					],
+				},
+			});
+			fire({ type: 'chat/turnComplete', endedAt: '2025-01-01T00:00:00.000Z', session, turnId } as ChatAction);
+			await turnPromise;
+
+			assert.strictEqual(agentHostService.turnActions.length, 1);
+			const turnAction = agentHostService.turnActions[0].action as ITurnStartedAction;
+			assert.deepStrictEqual(turnAction.message.attachments, [{
+				type: MessageAttachmentKind.Simple,
+				label: 'Selection (thread)',
+				modelRepresentation: 'the selected response text',
+				_meta: { source: 'thread' },
+			}]);
+		}));
+
 		test('file variable with file:// URI becomes file attachment', () => runWithFakedTimers({ useFakeTimers: true }, async () => {
 			const { sessionHandler, agentHostService, chatAgentService } = createContribution(disposables);
 
