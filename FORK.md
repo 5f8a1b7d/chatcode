@@ -57,4 +57,4 @@ the list below, then run `npm run valid-layers-check` and `npm run typecheck-cli
 - `extensions/latent-provider`: provider configuration, credentials, the capability model, and providers registered by other extensions (`latentProviderCapabilities`).
 - `extensions/latent-selection`: selection actions and the action extension point.
 - StudySpace and the Study Buddy harness hand-off live in the private derivative's workbench overlay. The public composer can select a derivative-provided default participant through `latentPrivate.defaultComposerAgentId` without naming a research participant.
-- `specs/`: formal specifications for the three-part AI workbench (Parts 1 and 2 are committed; Part 3 is local-only and ignored).
+- `specs/`: public AI workbench specifications (Parts 1 and 2). Part 3 is tracked in the independent private repository; its legacy local copy here remains ignored.

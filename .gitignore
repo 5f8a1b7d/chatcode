@@ -63,7 +63,7 @@ node_modules.local-before-external/
 screenshots/
 scripts/fixtures
 
-# Part 3 of the AI workbench specification is retained locally until the private derivative repository exists
+# Legacy local copy of Part 3; the tracked private specification lives in latent-private/specs/
 /specs/03-private-derivative.md
 # Derivative build sources and the workbench overlay they place into src/ (kept out of this repository)
 /latent-private/
