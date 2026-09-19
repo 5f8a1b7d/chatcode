@@ -83,7 +83,6 @@ const compilations = [
 	'extensions/references-view/tsconfig.json',
 	'extensions/search-result/tsconfig.json',
 	'extensions/simple-browser/tsconfig.json',
-	'extensions/studybuddy/tsconfig.json',
 	'extensions/latent-provider/tsconfig.json',
 	'extensions/latent-selection/tsconfig.json',
 	'extensions/tunnel-forwarding/tsconfig.json',
