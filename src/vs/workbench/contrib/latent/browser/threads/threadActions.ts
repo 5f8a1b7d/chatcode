@@ -10,9 +10,10 @@ import { IActionViewItemService } from '../../../../../platform/actions/browser/
 import { Action2, MenuId, registerAction2 } from '../../../../../platform/actions/common/actions.js';
 import { ContextKeyExpr } from '../../../../../platform/contextkey/common/contextkey.js';
 import { IInstantiationService, ServicesAccessor } from '../../../../../platform/instantiation/common/instantiation.js';
+import { IDialogService } from '../../../../../platform/dialogs/common/dialogs.js';
 import { INotificationService } from '../../../../../platform/notification/common/notification.js';
 import { IViewsService } from '../../../../services/views/common/viewsService.js';
-import { IChatWidgetService } from '../../../chat/browser/chat.js';
+import { IChatWidgetService, isIChatViewViewContext } from '../../../chat/browser/chat.js';
 import { ChatContextKeys } from '../../../chat/common/actions/chatContextKeys.js';
 import { IChatService } from '../../../chat/common/chatService/chatService.js';
 import { IChatRequestViewModel, isRequestVM } from '../../../chat/common/model/chatViewModel.js';
@@ -62,12 +63,11 @@ class NewThreadAction extends Action2 {
 			icon: Codicon.add,
 			f1: true,
 			category: localize2('latent.category', "Latent"),
-			menu: [{ id: MenuId.EditorTitle, group: 'navigation', order: -1000 }],
 		});
 	}
 
 	async run(accessor: ServicesAccessor): Promise<void> {
-		await accessor.get(ISideChatOpener).openNew('editorArea');
+		await accessor.get(ISideChatOpener).openNew('editorArea', { host: 'editorArea' });
 	}
 }
 
@@ -83,10 +83,15 @@ class OpenSideChatAction extends Action2 {
 
 	async run(accessor: ServicesAccessor, threadId?: string): Promise<void> {
 		const opener = accessor.get(ISideChatOpener);
-		if (threadId) {
-			await opener.open(threadId, 'commandPalette');
+		const widget = accessor.get(IChatWidgetService).lastFocusedWidget;
+		const session = widget?.viewModel?.sessionResource;
+		const threads = accessor.get(IThreadService);
+		const current = threadId ?? (session ? (threads.getThreadBySession(session) ?? threads.adoptSession(session)).id : undefined);
+		const origin = widget && isIChatViewViewContext(widget.viewContext) ? 'secondarySideBar' : 'editorArea';
+		if (current) {
+			await opener.open(current, origin);
 		} else {
-			await opener.openNew('commandPalette');
+			await opener.openNew(origin);
 		}
 	}
 }
@@ -95,7 +100,7 @@ class SearchThreadsAction extends Action2 {
 	constructor() {
 		super({
 			id: LatentThreadActionIds.Search,
-			title: localize2('latent.thread.search', "Search Threads"),
+			title: localize2('latent.thread.search', "Show All Sessions in Sidebar"),
 			f1: true,
 			category: localize2('latent.category', "Latent"),
 		});
@@ -134,6 +139,13 @@ class EditAsBranchAction extends Action2 {
 		}
 		const model = chatService.getSession(item.sessionResource);
 		if (model?.requestInProgress.get()) {
+			const confirmation = await accessor.get(IDialogService).confirm({
+				message: localize('latent.thread.stopToEdit', "Stop the current response and edit this message?"),
+				primaryButton: localize('latent.thread.stopAndEdit', "Stop and Edit"),
+			});
+			if (!confirmation.confirmed) {
+				return;
+			}
 			await chatService.cancelCurrentRequestForSession(item.sessionResource, 'latent.editAsBranch');
 		}
 		try {

@@ -113,7 +113,7 @@ export class ThreadService extends Disposable implements IThreadService {
 		}));
 	}
 
-	async createThread(options?: { tabKey?: ITabKey; title?: string; origin?: ThreadOrigin }): Promise<IThread> {
+	async createThread(options?: { tabKey?: ITabKey; title?: string; origin?: ThreadOrigin; createdAt?: number; updatedAt?: number }): Promise<IThread> {
 		const reference = this.chatService.startNewLocalSession(ChatAgentLocation.Chat, { debugOwner: 'LatentThreadService#createThread' });
 		const thread = this.register(reference.object.sessionResource, options);
 		this.ownedSessions.set(reference.object.sessionResource.toString(), reference);
@@ -123,7 +123,11 @@ export class ThreadService extends Disposable implements IThreadService {
 		return thread;
 	}
 
-	adoptSession(sessionResource: URI, options?: { tabKey?: ITabKey; title?: string; origin?: ThreadOrigin }): IThread {
+	adoptSession(sessionResource: URI, options?: { tabKey?: ITabKey; title?: string; origin?: ThreadOrigin; createdAt?: number; updatedAt?: number }): IThread {
+		if (!this.ownedSessions.has(sessionResource.toString())) {
+			const reference = this.chatService.acquireExistingSession(sessionResource, 'LatentThreadService#adoptSession');
+			if (reference) { this.ownedSessions.set(sessionResource.toString(), reference); }
+		}
 		const existing = this.getThreadBySession(sessionResource);
 		if (existing) {
 			if (options?.tabKey && !existing.tabKey) {
@@ -135,10 +139,10 @@ export class ThreadService extends Disposable implements IThreadService {
 		return this.register(sessionResource, options);
 	}
 
-	private register(sessionResource: URI, options?: { tabKey?: ITabKey; title?: string; origin?: ThreadOrigin }): ThreadRecord {
+	private register(sessionResource: URI, options?: { tabKey?: ITabKey; title?: string; origin?: ThreadOrigin; createdAt?: number; updatedAt?: number }): ThreadRecord {
 		const now = Date.now();
 		const branch: IThreadBranch = { id: generateUuid(), sessionResource, parentBranchId: undefined, forkTurnIndex: undefined, createdAt: now, label: localize('latent.thread.rootBranch', "Original") };
-		const thread = new ThreadRecord(generateUuid(), options?.title ?? this.chatService.getSessionTitle(sessionResource) ?? localize('latent.thread.untitled', "New Thread"), options?.tabKey, options?.origin ?? 'workbench', now, now, branch.id, [branch]);
+		const thread = new ThreadRecord(generateUuid(), options?.title || this.chatService.getSessionTitle(sessionResource) || localize('latent.thread.untitled', "New Thread"), options?.tabKey, options?.origin ?? 'workbench', options?.createdAt ?? now, options?.updatedAt ?? now, branch.id, [branch]);
 		this.threads.set(thread.id, thread);
 		this.save();
 		return thread;
@@ -225,7 +229,7 @@ export class ThreadService extends Disposable implements IThreadService {
 	/** The branch whose session owns the Turn at `turnIndex` along `branch`'s lineage. */
 	private ownerOfTurn(thread: ThreadRecord, branch: IThreadBranch, turnIndex: number): IThreadBranch {
 		let cursor = branch;
-		while (cursor.forkTurnIndex !== undefined && turnIndex < cursor.forkTurnIndex) {
+		while (cursor.forkTurnIndex !== undefined && turnIndex <= cursor.forkTurnIndex) {
 			const parent = cursor.parentBranchId ? thread.branches.find(candidate => candidate.id === cursor.parentBranchId) : undefined;
 			if (!parent) {
 				break;
@@ -246,7 +250,14 @@ export class ThreadService extends Disposable implements IThreadService {
 		if (!session || !request) {
 			throw new Error(localize('latent.thread.missingTurn', "The message to edit no longer exists."));
 		}
-		const data = session.toExport();
+		// Export-only data is treated as an imported transcript and excluded from
+		// the upstream session store. A branch must be an independently saved session.
+		const data = session.toJSON();
+		data.sessionId = generateUuid();
+		data.creationDate = Date.now();
+		data.customTitle = undefined;
+		data.inputState = undefined;
+		data.pendingRequests = undefined;
 		data.requests = data.requests.slice(0, turnIndex);
 		const reference = this.chatService.loadSessionFromData(data, 'LatentThreadService#editTurn');
 		this.ownedSessions.set(reference.object.sessionResource.toString(), reference);
@@ -383,7 +394,7 @@ export class ThreadService extends Disposable implements IThreadService {
 
 	private async resolveSession(sessionResource: URI): Promise<IChatModel | undefined> {
 		const loaded = this.chatService.getSession(sessionResource);
-		if (loaded) {
+		if (loaded && this.ownedSessions.has(sessionResource.toString())) {
 			return loaded;
 		}
 		try {
@@ -445,4 +456,3 @@ export class ThreadService extends Disposable implements IThreadService {
 		this._onDidChangeThreads.fire();
 	}
 }
-

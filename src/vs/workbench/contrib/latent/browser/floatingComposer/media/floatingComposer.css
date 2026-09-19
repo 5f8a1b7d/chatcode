@@ -206,3 +206,20 @@
 	font-size: 0.9em;
 	opacity: 0.8;
 }
+
+.floating-composer-expand {
+	position: absolute;
+	right: 12px;
+	top: 12px;
+	width: 28px;
+	height: 28px;
+}
+.floating-composer-host:has(.floating-composer-expanded:not([hidden])) .floating-composer-expand { display: none; }
+.floating-composer-host .min-w-0 { min-width: 0; }
+.floating-composer-host .flex-wrap { flex-wrap: wrap; }
+.floating-composer-host .max-w-40 { display: inline-block; min-width: 0; }
+.floating-composer-host form > .flex:first-child { padding-right: 32px; }
+
+.composer-suggestions { max-height: 160px; overflow-y: auto; border: 1px solid var(--vscode-widget-border); border-radius: var(--vscode-cornerRadius-small, 4px); }
+.composer-suggestions button { display: block; width: 100%; padding: 6px 8px; text-align: start; }
+.composer-suggestions button[aria-selected="true"], .composer-suggestions button:hover { background: var(--vscode-list-hoverBackground); }

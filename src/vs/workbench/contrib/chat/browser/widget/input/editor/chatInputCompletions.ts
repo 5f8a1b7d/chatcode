@@ -50,7 +50,7 @@ import { IChatAgentData, IChatAgentNameService, IChatAgentService, getFullyQuali
 import { getAttachableImageExtension } from '../../../../common/model/chatModel.js';
 import { ChatRequestAgentPart, ChatRequestAgentSubcommandPart, ChatRequestSlashPromptPart, ChatRequestTextPart, ChatRequestToolPart, ChatRequestToolSetPart, chatAgentLeader, chatSubcommandLeader, chatVariableLeader } from '../../../../common/requestParser/chatParserTypes.js';
 import { IChatSlashCommandService } from '../../../../common/participants/chatSlashCommands.js';
-import { IChatRequestVariableEntry } from '../../../../common/attachments/chatVariableEntries.js';
+import { IChatRequestVariableEntry, formatChatAttachmentName, formatChatAttachmentReference } from '../../../../common/attachments/chatVariableEntries.js';
 import { IDynamicVariable, toAttachedContextDynamicVariable } from '../../../../common/attachments/chatVariables.js';
 import { ChatAgentLocation, ChatModeKind, isSupportedChatFileScheme } from '../../../../common/constants.js';
 import { isToolSet } from '../../../../common/tools/languageModelToolsService.js';
@@ -862,7 +862,8 @@ registerAction2(StartParameterizedPromptAction);
 class ReferenceArgument {
 	constructor(
 		readonly widget: IChatWidget,
-		readonly variable: IDynamicVariable
+		readonly variable: IDynamicVariable,
+		readonly attachment?: IChatRequestVariableEntry,
 	) { }
 }
 
@@ -904,14 +905,18 @@ class BuiltinDynamicCompletions extends Disposable {
 			const typedLeader = range.varWord?.word?.charAt(0) === chatAgentLeader ? chatAgentLeader : chatVariableLeader;
 			const typedWord = getCompletionRangeWord(range) ?? typedLeader;
 			const suggestOptions = widget.inputEditor.getOption(EditorOption.suggest);
-			const suggestions = coalesce(widget.attachmentModel.attachments
-				.filter(attachment => !attachment.range)
+			const suggestions = coalesce(widget.input.getAttachedAndImplicitContext().asArray()
+				.filter(attachment => !attachment.range || attachment.attachmentNumber !== undefined)
 				.map((attachment): CompletionItem | undefined => {
-					const match = getAttachedContextCompletionMatch(typedWord, typedLeader, attachment.name, attachment.kind, suggestOptions);
+					const isNumberedReference = typedLeader === chatVariableLeader && attachment.attachmentNumber !== undefined && !!attachment.attachmentMimeType;
+					const attachmentLabel = isNumberedReference ? formatChatAttachmentName(attachment.attachmentNumber!, attachment.name) : attachment.name;
+					const match = getAttachedContextCompletionMatch(typedWord, typedLeader, attachmentLabel, attachment.kind, suggestOptions);
 					if (!match) {
 						return undefined;
 					}
-					const text = `${typedLeader}attachment:${attachment.name}`;
+					const text = isNumberedReference
+						? formatChatAttachmentReference(attachment.attachmentNumber!, attachment.attachmentMimeType!)
+						: `${typedLeader}attachment:${attachment.name}`;
 					const referenceRange = {
 						startLineNumber: range.replace.startLineNumber,
 						startColumn: range.replace.startColumn,
@@ -919,7 +924,7 @@ class BuiltinDynamicCompletions extends Disposable {
 						endColumn: range.replace.startColumn + text.length
 					};
 					return {
-						label: { label: attachment.name, description: localize('attachedContext', 'Attached context') },
+						label: { label: attachmentLabel, description: localize('attachedContext', 'Attached context') },
 						filterText: match.filterText,
 						insertText: range.varWord?.endColumn === range.replace.endColumn ? `${text} ` : text,
 						range,
@@ -932,7 +937,7 @@ class BuiltinDynamicCompletions extends Disposable {
 						command: {
 							id: BuiltinDynamicCompletions.addReferenceCommand,
 							title: '',
-							arguments: [new ReferenceArgument(widget, toAttachedContextDynamicVariable(attachment, referenceRange))]
+							arguments: [new ReferenceArgument(widget, toAttachedContextDynamicVariable(attachment, referenceRange), attachment)]
 						}
 					};
 				}));
@@ -1327,6 +1332,9 @@ class BuiltinDynamicCompletions extends Disposable {
 
 	private cmdAddReference(arg: ReferenceArgument) {
 		// invoked via the completion command
+		if (arg.attachment) {
+			arg.widget.attachmentModel.addContext(arg.attachment);
+		}
 		arg.widget.getContrib<ChatDynamicVariableModel>(ChatDynamicVariableModel.ID)?.addReference(arg.variable);
 	}
 }

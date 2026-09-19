@@ -81,5 +81,10 @@ export function toAttachedContextDynamicVariable(entry: IChatRequestVariableEntr
 		isAttachmentReference: true,
 		range,
 		data: undefined,
+		promptText: entry.attachmentNumber === undefined ? undefined : `[#${entry.attachmentNumber}: ${entry.name}]`,
+		_meta: entry.attachmentNumber === undefined ? undefined : {
+			...entry._meta,
+			attachmentPreview: typeof entry.value === 'string' ? entry.value : entry.name,
+		},
 	};
 }

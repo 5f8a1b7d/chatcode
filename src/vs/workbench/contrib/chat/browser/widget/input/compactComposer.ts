@@ -5,6 +5,7 @@ import { importAMDNodeModule } from '../../../../../../amdX.js';
 import { IDisposable, toDisposable } from '../../../../../../base/common/lifecycle.js';
 import { basename } from '../../../../../../base/common/resources.js';
 import { localize } from '../../../../../../nls.js';
+import { formatChatAttachmentName, formatChatAttachmentReference } from '../../../common/attachments/chatVariableEntries.js';
 import type { ComposerPluginIcon, IComposerPluginActivationContext, IComposerPluginSnapshot, IComposerSnapshot } from '../../../common/composer/composerContracts.js';
 import { ComposerModel } from '../../../common/composer/composerModel.js';
 
@@ -103,9 +104,25 @@ function useComposerSnapshot(model: ComposerModel<ICompactComposerPluginActivati
 	return ReactRuntime.useSyncExternalStore(subscribe, model.getSnapshot, model.getSnapshot);
 }
 
-function CompactComposer({ model }: { readonly model: ComposerModel<ICompactComposerPluginActivationContext> }): React.ReactElement {
+function CompactComposer({ model, requestNativeCompletions }: { readonly model: ComposerModel<ICompactComposerPluginActivationContext>; readonly requestNativeCompletions?: () => void }): React.ReactElement {
 	const snapshot = useComposerSnapshot(model);
 	const textareaRef = ReactRuntime.useRef<HTMLTextAreaElement>(null);
+	const [cursor, setCursor] = ReactRuntime.useState(0);
+	const [suggestionsOpen, setSuggestionsOpen] = ReactRuntime.useState(false);
+	const [selectedSuggestion, setSelectedSuggestion] = ReactRuntime.useState(0);
+	const reference = snapshot.draft.text.slice(0, cursor).match(/(?:^|\s)#(\d*)$/);
+	const suggestions = suggestionsOpen && reference ? snapshot.draft.attachments.filter(item => item.number !== undefined && String(item.number).startsWith(reference[1])) : [];
+	const chooseReference = (number: number) => {
+		const attachment = suggestions.find(item => item.number === number);
+		if (!attachment) {
+			return;
+		}
+		const start = cursor - (reference?.[1].length ?? 0) - 1;
+		const inserted = `${formatChatAttachmentReference(number, attachment.mimeType)} `;
+		model.setText(snapshot.draft.text.slice(0, start) + inserted + snapshot.draft.text.slice(cursor));
+		setSuggestionsOpen(false);
+		requestAnimationFrame(() => { textareaRef.current?.focus(); textareaRef.current?.setSelectionRange(start + inserted.length, start + inserted.length); });
+	};
 	const header = snapshot.plugins.filter(plugin => plugin.placement === 'header');
 	const leading = snapshot.plugins.filter(plugin => plugin.placement === 'leading');
 	const trailing = snapshot.plugins.filter(plugin => plugin.placement === 'trailing');
@@ -125,6 +142,13 @@ function CompactComposer({ model }: { readonly model: ComposerModel<ICompactComp
 	};
 
 	const onKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
+		if (suggestions.length && ['ArrowDown', 'ArrowUp', 'Enter', 'Tab', 'Escape'].includes(event.key)) {
+			event.preventDefault();
+			if (event.key === 'Escape') { setSuggestionsOpen(false); }
+			else if (event.key === 'ArrowDown' || event.key === 'ArrowUp') { setSelectedSuggestion((selectedSuggestion + (event.key === 'ArrowDown' ? 1 : suggestions.length - 1)) % suggestions.length); }
+			else { chooseReference(suggestions[Math.min(selectedSuggestion, suggestions.length - 1)].number!); }
+			return;
+		}
 		if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
 			event.preventDefault();
 			void model.submit();
@@ -150,31 +174,46 @@ function CompactComposer({ model }: { readonly model: ComposerModel<ICompactComp
 			key: attachment.id,
 			title,
 		},
-		attachment.number !== undefined ? ReactRuntime.createElement('span', { className: 'composer-attachment-number' }, `#${attachment.number}`) : null,
+		attachment.number !== undefined ? ReactRuntime.createElement('span', { className: 'composer-attachment-number' }, `${attachment.number}:`) : null,
 		ReactRuntime.createElement('span', {
 			'aria-hidden': true,
 			className: attachment.kind === 'image' ? 'codicon codicon-file-media' : attachment.kind === 'context' ? 'codicon codicon-list-selection' : 'codicon codicon-file',
 		}),
 		ReactRuntime.createElement('span', { className: 'max-w-40 truncate' }, label),
-		ReactRuntime.createElement('button', {
+		!attachment.isReadOnly ? ReactRuntime.createElement('button', {
 			'aria-label': localize('floatingComposer.removeAttachment', "Remove {0}", label),
 			className: 'inline-flex items-center justify-center text-muted-foreground hover:text-foreground',
 			onClick: () => model.removeAttachment(attachment.id),
 			type: 'button',
-		}, ReactRuntime.createElement('span', { 'aria-hidden': true, className: 'codicon codicon-close' })),
+		}, ReactRuntime.createElement('span', { 'aria-hidden': true, className: 'codicon codicon-close' })) : null,
 		);
 	})) : null,
 	ReactRuntime.createElement(Textarea, {
 		'aria-label': localize('floatingComposer.input', "Chat Prompt"),
-		autoFocus: true,
+		autoFocus: false,
 		disabled: snapshot.disabled,
-		onChange: event => model.setText(event.currentTarget.value),
+		onChange: event => {
+			model.setText(event.currentTarget.value);
+			setCursor(event.currentTarget.selectionStart);
+			setSuggestionsOpen(true);
+			setSelectedSuggestion(0);
+			if (/(?:^|\s)@$/.test(event.currentTarget.value.slice(0, event.currentTarget.selectionStart))) {
+				requestNativeCompletions?.();
+			}
+		},
 		onKeyDown,
 		placeholder: localize('floatingComposer.placeholder', "Ask anything"),
 		textareaRef,
 		rows: 1,
 		value: snapshot.draft.text,
 	}),
+	suggestionsOpen && reference ? ReactRuntime.createElement('div', { className: 'composer-suggestions', role: 'listbox', 'aria-label': localize('floatingComposer.references', "Context References") },
+		...suggestions.map((item, index) => ReactRuntime.createElement('button', {
+			key: item.id, type: 'button', role: 'option', 'aria-selected': index === selectedSuggestion,
+			onMouseDown: event => event.preventDefault(), onClick: () => chooseReference(item.number!),
+		}, formatChatAttachmentName(item.number!, item.kind === 'context' ? item.label : basename(item.resource)))),
+		requestNativeCompletions ? ReactRuntime.createElement('button', { type: 'button', onClick: () => { setSuggestionsOpen(false); requestNativeCompletions(); } }, localize('floatingComposer.moreContext', "More Context…")) : null,
+	) : null,
 	ReactRuntime.createElement('div', { className: 'flex items-center justify-between gap-2' },
 		ReactRuntime.createElement('div', { className: 'flex items-center gap-1' },
 			...leading.map(plugin => ReactRuntime.createElement(PluginButton, { key: plugin.id, model, plugin })),
@@ -201,10 +240,10 @@ function CompactComposer({ model }: { readonly model: ComposerModel<ICompactComp
 }
 
 /** Mounts the React adapter and returns a VS Code lifecycle handle. */
-export async function renderCompactComposer(container: HTMLElement, model: ComposerModel<ICompactComposerPluginActivationContext>): Promise<IDisposable> {
+export async function renderCompactComposer(container: HTMLElement, model: ComposerModel<ICompactComposerPluginActivationContext>, requestNativeCompletions?: () => void): Promise<IDisposable> {
 	ReactRuntime = await importAMDNodeModule<typeof React>('react', 'umd/react.production.min.js');
 	const reactDOM = await importAMDNodeModule<IReactDOMRuntime>('react-dom', 'umd/react-dom.production.min.js', undefined, { react: ReactRuntime });
 	const root = reactDOM.createRoot(container);
-	root.render(ReactRuntime.createElement(CompactComposer, { model }));
+	root.render(ReactRuntime.createElement(CompactComposer, { model, requestNativeCompletions }));
 	return toDisposable(() => root.unmount());
 }

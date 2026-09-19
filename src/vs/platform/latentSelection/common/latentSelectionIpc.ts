@@ -42,7 +42,7 @@ export class LatentSelectionChannel implements IServerChannel {
 			case 'setPinned':
 				return this.service.setPinned(windowId, argument.pinned === true) as Promise<T>;
 			case 'hide':
-				return this.service.hide(windowId) as Promise<T>;
+				return this.service.hide(windowId, argument.onlyIfUnpinned === true) as Promise<T>;
 		}
 		throw new Error(`Call not found: ${command}`);
 	}
@@ -81,7 +81,7 @@ export class LatentSelectionChannelClient implements ILatentSelectionService {
 		return this.channel.call('setPinned', { windowId, pinned });
 	}
 
-	hide(windowId: number): Promise<void> {
-		return this.channel.call('hide', { windowId });
+	hide(windowId: number, onlyIfUnpinned?: boolean): Promise<void> {
+		return this.channel.call('hide', { windowId, onlyIfUnpinned });
 	}
 }

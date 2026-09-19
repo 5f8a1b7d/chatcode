@@ -5,13 +5,14 @@ import { onUnexpectedError } from '../../../../../base/common/errors.js';
 import { Disposable, IDisposable, MutableDisposable, toDisposable } from '../../../../../base/common/lifecycle.js';
 import { localize } from '../../../../../nls.js';
 import { IInstantiationService } from '../../../../../platform/instantiation/common/instantiation.js';
+import { IDynamicVariable } from '../../../chat/common/attachments/chatVariables.js';
 import { IChatWidget } from '../../../chat/browser/chat.js';
 import { IChatModel } from '../../../chat/common/model/chatModel.js';
 import { ChatAgentLocation } from '../../../chat/common/constants.js';
 import { IContextKeyService } from '../../../../../platform/contextkey/common/contextkey.js';
 import { ServiceCollection } from '../../../../../platform/instantiation/common/serviceCollection.js';
 import { IStorageService, StorageScope, StorageTarget } from '../../../../../platform/storage/common/storage.js';
-import { editorBackground, inputBackground } from '../../../../../platform/theme/common/colorRegistry.js';
+import { editorBackground, foreground, inputBackground } from '../../../../../platform/theme/common/colorRegistry.js';
 import { ComposerModel } from '../../../chat/common/composer/composerModel.js';
 import { ChatMode } from '../../../chat/common/chatModes.js';
 import { ChatWidget } from '../../../chat/browser/widget/chatWidget.js';
@@ -25,6 +26,8 @@ const MIN_EXPANDED_HEIGHT = 280;
 export interface IFloatingComposerHostCallbacks {
 	/** Move the bound Thread into a Side Chat (open-location rule, origin `editorArea`). */
 	readonly openInSideChat: () => Promise<void>;
+	readonly prepareInput: (query: string) => Promise<{ query: string; references?: readonly IDynamicVariable[]; onRequestAccepted: () => void }>;
+	readonly fixReferences: () => Promise<void>;
 }
 
 /** Owns one draggable React composer surface within an editor group container. */
@@ -84,6 +87,14 @@ export class FloatingComposerHost extends Disposable {
 		const actions = getWindow(this._container).document.createElement('div');
 		actions.classList.add('floating-composer-header-actions');
 		header.appendChild(actions);
+		const fixReferences = getWindow(this._container).document.createElement('button');
+		fixReferences.type = 'button';
+		fixReferences.textContent = localize('floatingComposer.fixReferences', "Fix References");
+		actions.appendChild(fixReferences);
+		const updateReferences = () => { fixReferences.hidden = model.getSnapshot().diagnostics.length === 0; };
+		this._register(model.onDidChange(updateReferences));
+		updateReferences();
+		this._register(addDisposableListener(fixReferences, EventType.CLICK, () => void this._callbacks.fixReferences()));
 		const retry = getWindow(this._container).document.createElement('button');
 		retry.type = 'button';
 		retry.classList.add('codicon', 'codicon-refresh');
@@ -106,15 +117,20 @@ export class FloatingComposerHost extends Disposable {
 			ChatWidget,
 			ChatAgentLocation.Chat,
 			{ isQuickChat: true },
-			{ autoScroll: true, renderStyle: 'compact', enableFind: true, renderFollowups: true, defaultMode: ChatMode.Ask },
-			{ listForeground: inputBackground, listBackground: editorBackground, overlayBackground: editorBackground, inputEditorBackground: inputBackground, resultEditorBackground: editorBackground },
+			{ autoScroll: true, renderStyle: 'compact', enableFind: true, renderFollowups: true, defaultMode: ChatMode.Ask, prepareInput: query => this._callbacks.prepareInput(query) },
+			{ listForeground: foreground, listBackground: editorBackground, overlayBackground: editorBackground, inputEditorBackground: inputBackground, resultEditorBackground: editorBackground },
 		));
 		this._chatWidget.render(chatBody);
 		this._chatWidget.setVisible(false);
 		this._register(addDisposableListener(collapse, EventType.CLICK, () => this.collapse()));
 		this._register(addDisposableListener(retry, EventType.CLICK, () => void this._chatWidget.rerunLastRequest()));
 		this._register(addDisposableListener(move, EventType.CLICK, () => void this._callbacks.openInSideChat()));
-		this._register(addDisposableListener(this._collapsed, EventType.FOCUS_IN, () => this.expand()));
+		const expand = getWindow(this._container).document.createElement('button');
+		expand.classList.add('floating-composer-expand', 'codicon', 'codicon-chevron-up');
+		expand.title = localize('floatingComposer.expand', "Expand Chat");
+		expand.setAttribute('aria-label', expand.title);
+		this._element.appendChild(expand);
+		this._register(addDisposableListener(expand, EventType.CLICK, () => this.expand()));
 		this._register(addDisposableListener(handle, EventType.POINTER_DOWN, event => this._startResize(event)));
 		this._register(addDisposableListener(handle, EventType.KEY_DOWN, event => {
 			if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
@@ -130,7 +146,13 @@ export class FloatingComposerHost extends Disposable {
 		const renderer = this._register(new MutableDisposable<IDisposable>());
 		let disposed = false;
 		this._register(toDisposable(() => disposed = true));
-		void renderCompactComposer(this._collapsed, model).then(disposable => {
+		void renderCompactComposer(this._collapsed, model, () => {
+			this.expand();
+			const editor = this._chatWidget.inputPart.inputEditor;
+			const inputModel = editor.getModel();
+			if (inputModel) { editor.setPosition(inputModel.getPositionAt(inputModel.getValueLength())); }
+			editor.trigger('latent.context', 'editor.action.triggerSuggest', {});
+		}).then(disposable => {
 			if (disposed) {
 				disposable.dispose();
 			} else {

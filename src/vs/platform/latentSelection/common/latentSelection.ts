@@ -20,6 +20,7 @@ export interface ISelectionSnapshot {
 	readonly languageId?: string;
 	readonly threadId?: string;
 	readonly turnId?: string;
+	readonly host?: 'editorArea' | 'secondarySideBar';
 	readonly truncated?: boolean;
 }
 
@@ -37,6 +38,7 @@ export interface ISelectionActionEvent {
 	readonly targetWindowId: number;
 	readonly actionId: string;
 	readonly action: string;
+	readonly comment?: string;
 	readonly selection: ISelectionSnapshot;
 }
 
@@ -65,7 +67,7 @@ export interface ILatentSelectionService {
 	showSelection(windowId: number, selection: ISelectionSnapshot, actions: readonly ISelectionBarAction[]): Promise<void>;
 	updateOverlay(windowId: number, update: ISelectionOverlayUpdate): Promise<void>;
 	setPinned(windowId: number, pinned: boolean): Promise<void>;
-	hide(windowId: number): Promise<void>;
+	hide(windowId: number, onlyIfUnpinned?: boolean): Promise<void>;
 }
 
 export const MAX_SELECTION_LENGTH = 50_000;

@@ -255,6 +255,9 @@ export interface IChatListItemRendererOptions {
 }
 
 export interface IChatWidgetViewOptions {
+	/** Lets an embedding host validate and prepare every user submission before sending. */
+	prepareInput?: (query: string) => Promise<{ query: string; references?: readonly IDynamicVariable[]; onRequestAccepted: () => void }>;
+
 	autoScroll?: boolean | ((mode: ChatModeKind) => boolean);
 	renderInputOnTop?: boolean;
 	/** Show the read-only status banner above the transcript instead of beside the composer. */
@@ -366,6 +369,7 @@ export function isIChatResourceViewContext(context: IChatWidgetViewContext): con
 export type IChatWidgetViewContext = IChatViewViewContext | IChatResourceViewContext | {};
 
 export interface IChatAcceptInputOptions {
+	attachmentReferences?: readonly IDynamicVariable[];
 	noCommandDetection?: boolean;
 	isVoiceInput?: boolean;
 	isVoiceModeInput?: boolean;
@@ -386,6 +390,8 @@ export interface IChatAcceptInputOptions {
 	preserveFocus?: boolean;
 	/** Keeps the input box contents and attachments after submitting a programmatic query, and omits them from it. The query itself is sent as-is: prompt slash commands in it are not resolved. */
 	preserveInput?: boolean;
+	/** Retain this user input after acceptance while still sending its attachments. */
+	preserveInputAfterSubmit?: boolean;
 	/**
 	 * Called once the request has been handed over to the chat service, i.e. it was either sent
 	 * right away or queued because another request is in progress. Callers that must not wait for
@@ -607,6 +613,8 @@ export interface IChatAttachmentTarget {
  * pipeline does not depend on {@link IChatWidget}.
  */
 export interface IChatPasteTarget extends IChatAttachmentTarget {
+	/** Next context number, when this input supports numbered references. */
+	readonly nextAttachmentNumber?: number;
 
 	/** Scopes resources created for this input, so they are cleaned up with the session. */
 	readonly sessionResource: URI;

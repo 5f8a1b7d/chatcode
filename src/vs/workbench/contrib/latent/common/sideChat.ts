@@ -18,6 +18,8 @@ export function resolveSideChatHost(origin: SideChatOrigin): SideChatHost {
 }
 
 export interface ISideChatOpenOptions {
+	/** Explicit destination for actions such as the editor title New Thread button. */
+	readonly host?: SideChatHost;
 	readonly attachments?: readonly IChatRequestVariableEntry[];
 	readonly focusInput?: boolean;
 	/** Prefill the composer without sending. */

@@ -3077,6 +3077,15 @@ export class ChatWidget extends Disposable implements IChatWidget {
 			await stopDictationForEditor(this.inputEditor);
 		}
 
+		if (this.viewOptions.prepareInput && !options?.preserveInput) {
+			const prepared = await this.viewOptions.prepareInput(query ?? this.inputEditor.getValue());
+			query = prepared.query;
+			const accepted = options?.onRequestAccepted;
+			options = { ...options, attachmentReferences: prepared.references, preserveInputAfterSubmit: true, onRequestAccepted: () => {
+				prepared.onRequestAccepted();
+				accepted?.();
+			} };
+		}
 		if (this.viewModel) {
 			markChat(this.viewModel.sessionResource, ChatPerfMark.RequestStart);
 		}
@@ -3466,7 +3475,7 @@ export class ChatWidget extends Disposable implements IChatWidget {
 				...selectedModelRequestOptions,
 				location: this.location,
 				locationData: this._location.resolveData?.(),
-				parserContext: { selectedAgent: this._lastSelectedAgent, mode: modeKind, attachmentCapabilities: this._lastSelectedAgent?.capabilities ?? this.attachmentCapabilities },
+				parserContext: { attachmentReferences: options.attachmentReferences, selectedAgent: this._lastSelectedAgent, mode: modeKind, attachmentCapabilities: this._lastSelectedAgent?.capabilities ?? this.attachmentCapabilities },
 				attachedContext: requestInputs.attachedContext.asArray(),
 				resolvedVariables: resolvedImageVariables,
 				noCommandDetection: options?.noCommandDetection,
@@ -3504,7 +3513,7 @@ export class ChatWidget extends Disposable implements IChatWidget {
 
 		// visibility sync before firing events to hide the welcome view
 		this.updateChatViewVisibility();
-		this.input.acceptInput(options?.storeToHistory ?? isUserQuery, options?.preserveFocus, options?.preserveInput);
+		this.input.acceptInput(options?.storeToHistory ?? isUserQuery, options?.preserveFocus, options?.preserveInput || options?.preserveInputAfterSubmit);
 
 		if (!options.preserveInput) {
 			// A maintenance command is not the user's goal.

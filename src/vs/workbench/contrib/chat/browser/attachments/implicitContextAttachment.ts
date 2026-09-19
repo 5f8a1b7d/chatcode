@@ -31,7 +31,7 @@ import { IHoverService } from '../../../../../platform/hover/browser/hover.js';
 import { ILabelService } from '../../../../../platform/label/common/label.js';
 import { IResourceLabel, ResourceLabels } from '../../../../browser/labels.js';
 import { ResourceContextKey } from '../../../../common/contextkeys.js';
-import { ChatContextIconPath, IChatRequestStringVariableEntry, IChatRequestVariableEntry, isStringImplicitContextValue, isStringVariableEntry, resolveChatContextIcon } from '../../common/attachments/chatVariableEntries.js';
+import { ChatContextIconPath, formatChatAttachmentName, IChatRequestStringVariableEntry, IChatRequestVariableEntry, isStringImplicitContextValue, isStringVariableEntry, resolveChatContextIcon } from '../../common/attachments/chatVariableEntries.js';
 import { IThemeService } from '../../../../../platform/theme/common/themeService.js';
 import { isDark } from '../../../../../platform/theme/common/theme.js';
 import { IChatWidget } from '../chat.js';
@@ -198,6 +198,11 @@ export class ImplicitContextAttachmentWidget extends Disposable {
 			}));
 		}
 
+		const entry = context.toBaseEntries()[0];
+		if (entry) {
+			const numbered = this.attachmentModel.getNumberedImplicitContext(entry);
+			dom.append(contextNode, dom.$('span.chat-attached-context-attachment-number', undefined, formatChatAttachmentName(numbered.attachmentNumber!, '')));
+		}
 		const label = this.renderDisposables.add(this.resourceLabels.create(contextNode, { supportIcons: true }));
 
 		let title: string | undefined;

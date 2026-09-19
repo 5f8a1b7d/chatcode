@@ -35,6 +35,7 @@ interface NativeSelectionData {
 
 interface NativeSelectionHook {
 	on(event: 'text-selection', listener: (data: NativeSelectionData) => void): void;
+	on(event: 'mouse-down', listener: (data: { x: number; y: number }) => void): void;
 	start(options?: { enableClipboard?: boolean }): boolean | void;
 	stop(): boolean | void;
 	cleanup(): void;
@@ -146,8 +147,8 @@ export class LatentSelectionMainService extends Disposable implements ILatentSel
 		this.applyPinned(pinned);
 	}
 
-	async hide(windowId: number): Promise<void> {
-		if (windowId === this.targetWindowId) {
+	async hide(windowId: number, onlyIfUnpinned = false): Promise<void> {
+		if (windowId === this.targetWindowId && (!onlyIfUnpinned || !this.pinned)) {
 			this.hideOverlay();
 		}
 	}
@@ -191,6 +192,15 @@ export class LatentSelectionMainService extends Disposable implements ILatentSel
 			return false;
 		}
 		try {
+			hook.on('mouse-down', () => {
+				if (!this.pinned && this.overlay?.isVisible()) {
+					const point = screen.getCursorScreenPoint();
+					const bounds = this.overlay.getBounds();
+					if (point.x < bounds.x || point.x >= bounds.x + bounds.width || point.y < bounds.y || point.y >= bounds.y + bounds.height) {
+						this.hideOverlay();
+					}
+				}
+			});
 			hook.on('text-selection', data => this.handleSystemSelection(data));
 			if (hook.start({ enableClipboard: true }) === false) {
 				throw new Error('selection-hook failed to start');
@@ -224,6 +234,9 @@ export class LatentSelectionMainService extends Disposable implements ILatentSel
 	}
 
 	private handleSystemSelection(data: NativeSelectionData): void {
+		if (this.windowsMainService.getWindows().some(window => window.win?.isFocused()) || this.overlay?.isFocused()) {
+			return;
+		}
 		const raw = data.text?.trim() ?? '';
 		const text = raw.slice(0, MAX_SELECTION_LENGTH);
 		if (!text) {
@@ -322,6 +335,7 @@ export class LatentSelectionMainService extends Disposable implements ILatentSel
 			this.overlayReady = true;
 			void this.renderOverlay();
 		});
+		overlay.on('blur', () => { if (!this.pinned) { this.hideOverlay(); } });
 		overlay.on('closed', () => {
 			if (this.overlay === overlay) {
 				this.overlay = undefined;
@@ -358,14 +372,17 @@ export class LatentSelectionMainService extends Disposable implements ILatentSel
 					this.applyPinned(true);
 				}
 				return true;
+			case 'comment':
+				this.resizeOverlay(156);
+				return true;
 			case 'action':
-				this.runAction(decodeURIComponent(url.pathname.slice(1)));
+				this.runAction(decodeURIComponent(url.pathname.slice(1)), url.searchParams.get('comment') ?? undefined);
 				return true;
 		}
 		return true;
 	}
 
-	private runAction(action: string): void {
+	private runAction(action: string, comment?: string): void {
 		if (!this.overlayState || this.targetWindowId === undefined) {
 			return;
 		}
@@ -379,9 +396,11 @@ export class LatentSelectionMainService extends Disposable implements ILatentSel
 			this.resizeOverlay(RESULT_HEIGHT);
 		}
 		void this.renderOverlay();
-		this._onDidRequestAction.fire({ targetWindowId: this.targetWindowId, actionId, action, selection: this.overlayState.selection });
+		this._onDidRequestAction.fire({ targetWindowId: this.targetWindowId, actionId, action, comment, selection: this.overlayState.selection });
 		if (!descriptor.showsResult && !this.pinned) {
+			const targetWindowId = this.targetWindowId;
 			this.hideOverlay();
+			this.windowsMainService.getWindowById(targetWindowId)?.focus();
 		}
 	}
 
@@ -455,6 +474,8 @@ function clamp(value: number, minimum: number, maximum: number): number {
 
 function createOverlayHtml(): string {
 	const labels = JSON.stringify({
+		comment: localize('latentSelection.optionalComment', "Optional comment"),
+		add: localize('latentSelection.add', "Add to Chat"),
 		close: localize('latentSelection.close', "Close"),
 		pin: localize('latentSelection.pin', "Pin"),
 		unpin: localize('latentSelection.unpin', "Unpin"),
@@ -475,7 +496,7 @@ function createOverlayHtml(): string {
 .head a{-webkit-app-region:no-drag;color:#aaa;text-decoration:none;padding:2px 6px;border-radius:5px;font-size:12px}.head a:hover{background:#3f3f46}.head a.on{color:#75beff}
 .preview{padding:4px 12px 6px;color:#bdbdbd;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.preview .badge{color:#e0a458;margin-left:6px}
 .bar{display:flex;flex-wrap:wrap;align-items:center;gap:2px;padding:0 6px 7px}.bar a{color:#eee;text-decoration:none;padding:6px 9px;border-radius:6px;white-space:nowrap}.bar a:hover{background:#3f3f46}.bar .empty{color:#888;padding:6px 9px}
-.newer{display:none;padding:0 12px 8px}.newer a{color:#75beff;text-decoration:none}.newer.visible{display:block}
+.comment{display:flex;gap:8px;padding:8px 12px}.comment[hidden]{display:none}.comment input{flex:1;min-width:0;background:transparent;color:inherit;border:1px solid #888;border-radius:4px;padding:6px}.comment button{background:#0e639c;color:white;border:0;border-radius:4px;padding:6px 10px}.newer{display:none;padding:0 12px 8px}.newer a{color:#75beff;text-decoration:none}.newer.visible{display:block}
 .result{display:none;border-top:1px solid rgba(255,255,255,.1);padding:12px;max-height:210px;overflow:auto;white-space:pre-wrap;line-height:1.5;user-select:text}.result.visible{display:block}.result.running{color:#aaa}.result.failed{color:#f48771}
 .details{display:none;border-top:1px solid rgba(255,255,255,.1);padding:8px 12px;color:#bdbdbd;white-space:pre-wrap;max-height:120px;overflow:auto}.details.visible{display:block}
 .foot{display:none;padding:4px 12px 8px}.foot.visible{display:block}.foot a{color:#75beff;text-decoration:none;font-size:12px}
@@ -484,18 +505,20 @@ function createOverlayHtml(): string {
 </style></head><body><div class="card">
 <div class="head"><div class="grip" title="drag"></div><a href="latent-selection://pin/on" id="pin"></a><a href="latent-selection://dismiss" id="close">×</a></div>
 <div id="preview" class="preview"></div><div id="bar" class="bar"></div><div id="newer" class="newer"><a href="latent-selection://use-current" id="useCurrent"></a></div>
-<div id="result" class="result"></div><div id="details" class="details"></div><div id="foot" class="foot"><a href="#" id="toggleDetails"></a></div></div>
+<form id="commentForm" class="comment" hidden><input id="comment"><button id="add" type="submit"></button></form><div id="result" class="result"></div><div id="details" class="details"></div><div id="foot" class="foot"><a href="#" id="toggleDetails"></a></div></div>
 <script>
 const labels=${labels};let showDetails=false;let lastState;
+const commentForm=document.getElementById('commentForm');const comment=document.getElementById('comment');comment.placeholder=labels.comment;comment.setAttribute('aria-label',labels.comment);document.getElementById('add').textContent=labels.add;
+commentForm.addEventListener('submit',event=>{event.preventDefault();location.href='latent-selection://action/latent.selection.addToChat?comment='+encodeURIComponent(comment.value);});
 document.getElementById('close').title=labels.close;document.getElementById('useCurrent').textContent=labels.useCurrent;
 document.getElementById('toggleDetails').addEventListener('click',e=>{e.preventDefault();showDetails=!showDetails;if(lastState)window.renderSelectionState(lastState);});
-window.renderSelectionState=state=>{lastState=state;
+window.renderSelectionState=state=>{if(lastState?.selection.selectionId!==state.selection.selectionId){commentForm.hidden=true;comment.value='';}lastState=state;
 const pin=document.getElementById('pin');pin.textContent=state.pinned?labels.unpin:labels.pin;pin.href='latent-selection://pin/'+(state.pinned?'off':'on');pin.className=state.pinned?'on':'';
 const preview=document.getElementById('preview');preview.textContent=(state.selection.application?state.selection.application+' · ':'')+state.selection.text;
 if(state.selection.truncated){const b=document.createElement('span');b.className='badge';b.textContent=labels.truncated;preview.append(b);}
 const bar=document.getElementById('bar');bar.replaceChildren();
 if(!state.actions.length){const e=document.createElement('span');e.className='empty';e.textContent=labels.noActions;bar.append(e);}
-for(const action of state.actions){const a=document.createElement('a');a.href='latent-selection://action/'+encodeURIComponent(action.id);a.textContent=action.label;a.title=action.label;bar.append(a);}
+for(const action of state.actions){const a=document.createElement('a');a.href='latent-selection://action/'+encodeURIComponent(action.id);a.textContent=action.label;a.title=action.label;if(action.id==='latent.selection.addToChat'){a.addEventListener('click',event=>{event.preventDefault();commentForm.hidden=false;comment.focus();location.href='latent-selection://comment';});}bar.append(a);}
 document.getElementById('newer').className='newer'+(state.hasNewer?' visible':'');
 const result=document.getElementById('result');const visible=!!state.phase;result.className='result'+(visible?' visible':'')+(state.phase==='running'?' running':'')+(state.phase==='failed'?' failed':'');result.textContent='';
 if(state.phase==='running'){const dot=document.createElement('span');dot.className='dot';result.append(dot,document.createTextNode(state.result||labels.working));}else if(state.result){result.textContent=state.result;}

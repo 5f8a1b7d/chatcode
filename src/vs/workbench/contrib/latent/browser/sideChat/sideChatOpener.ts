@@ -45,7 +45,14 @@ export class SideChatOpener extends Disposable implements ISideChatOpener {
 
 	async openNew(origin: SideChatOrigin, options?: ISideChatOpenOptions): Promise<IChatWidget | undefined> {
 		const thread = await this.threadService.createThread({ origin: 'workbench' });
-		return this.open(thread.id, origin, options);
+		const widget = await this.open(thread.id, origin, { ...options, attachments: undefined, text: undefined });
+		if (widget) {
+			// A native host may carry its previous input state into a new session.
+			widget.attachmentModel.clear(true);
+			widget.inputPart.setValue(options?.text ?? '', false);
+			if (options?.attachments?.length) { widget.attachmentModel.addContext(...options.attachments); }
+		}
+		return widget;
 	}
 
 	async open(threadId: string, origin: SideChatOrigin, options?: ISideChatOpenOptions): Promise<IChatWidget | undefined> {
@@ -53,7 +60,7 @@ export class SideChatOpener extends Disposable implements ISideChatOpener {
 		if (!branch) {
 			return undefined;
 		}
-		const preferred = this.resolveHost(origin);
+		const preferred = options?.host ?? this.resolveHost(origin);
 		let widget: IChatWidget | undefined;
 		try {
 			widget = await this.openIn(preferred, branch.sessionResource, options);

@@ -20,7 +20,7 @@ import { IDynamicVariable, toAttachedContextDynamicVariable } from '../../../com
 import { IChatWidget } from '../../../browser/chat.js';
 import { getDynamicVariablesForWidget, getSelectedToolAndToolSetsForWidget } from '../../../browser/attachments/chatVariables.js';
 import { ChatDynamicVariableModel, dynamicVariableDecorationType } from '../../../browser/attachments/chatDynamicVariables.js';
-import { IChatRequestVariableEntry } from '../../../common/attachments/chatVariableEntries.js';
+import { IChatRequestVariableEntry, formatChatAttachmentName, formatChatAttachmentReference } from '../../../common/attachments/chatVariableEntries.js';
 import { IToolData, ToolDataSource, ToolAndToolSetEnablementMap } from '../../../common/tools/languageModelToolsService.js';
 import { observableValue } from '../../../../../../base/common/observable.js';
 
@@ -224,6 +224,31 @@ suite('inline attachment references', () => {
 			hasAttachment: false,
 			isAttachmentReference: true,
 			hasCompactSerializedState: true,
+		});
+	});
+
+	test('carries numbered attachment display metadata into the model-facing reference', () => {
+		const attachment = createMockAttachment({
+			name: 'notes.txt',
+			value: 'preview',
+			attachmentNumber: 4,
+			attachmentMimeType: 'text/plain',
+		});
+		const reference = toAttachedContextDynamicVariable(attachment, new Range(1, 1, 1, 14));
+
+		assert.deepStrictEqual({ promptText: reference.promptText, preview: reference._meta?.attachmentPreview }, {
+			promptText: '[#4: notes.txt]',
+			preview: 'preview',
+		});
+	});
+
+	test('formats numbered attachment names and MIME references', () => {
+		assert.deepStrictEqual({
+			name: formatChatAttachmentName(4, 'notes.txt'),
+			reference: formatChatAttachmentReference(4, 'text/plain'),
+		}, {
+			name: '4:notes.txt',
+			reference: '#4:text/plain',
 		});
 	});
 });

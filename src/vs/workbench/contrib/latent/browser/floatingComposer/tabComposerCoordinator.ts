@@ -3,7 +3,6 @@ import { Codicon } from '../../../../../base/common/codicons.js';
 import { onUnexpectedError } from '../../../../../base/common/errors.js';
 import { Emitter } from '../../../../../base/common/event.js';
 import { Disposable, DisposableMap, DisposableStore } from '../../../../../base/common/lifecycle.js';
-import { getMediaMime } from '../../../../../base/common/mime.js';
 import { localize, localize2 } from '../../../../../nls.js';
 import { Action2, registerAction2 } from '../../../../../platform/actions/common/actions.js';
 import { IConfigurationService } from '../../../../../platform/configuration/common/configuration.js';
@@ -18,14 +17,14 @@ import { SideBySideEditorInput } from '../../../../common/editor/sideBySideEdito
 import { IWorkbenchContribution } from '../../../../common/contributions.js';
 import { IEditorGroup, IEditorGroupsService } from '../../../../services/editor/common/editorGroupsService.js';
 import { ChatEditorInput } from '../../../chat/browser/widgetHosts/editor/chatEditorInput.js';
-import { IChatRequestVariableEntry } from '../../../chat/common/attachments/chatVariableEntries.js';
+import { IChatRequestVariableEntry, toFileVariableEntry } from '../../../chat/common/attachments/chatVariableEntries.js';
 import { ComposerSubmitKind, IComposerAttachment, IComposerDiagnostic, IComposerDraft, IComposerPlugin } from '../../../chat/common/composer/composerContracts.js';
 import { ComposerModel } from '../../../chat/common/composer/composerModel.js';
 import { ChatRequestQueueKind, IChatService } from '../../../chat/common/chatService/chatService.js';
 import { ChatConfiguration, ChatModeKind } from '../../../chat/common/constants.js';
 import { IChatAgentService } from '../../../chat/common/participants/chatAgents.js';
 import { ICompactComposerPluginActivationContext } from '../../../chat/browser/widget/input/compactComposer.js';
-import { IDraft, IDraftAttachment, ITabDraftService } from '../../common/drafts.js';
+import { IDraft, IDraftAttachment, ITabDraftService, attachmentMimeType, createDraftReferences, toNumberedChatAttachment } from '../../common/drafts.js';
 import { ISideChatOpener } from '../sideChat/sideChatOpener.js';
 import { ITabKey, tabKeyEquals } from '../../common/tabKey.js';
 import { IThread, IThreadService } from '../../common/threads.js';
@@ -57,25 +56,33 @@ export function tabKeyForEditor(groupId: number, editor: EditorInput | null | un
 }
 
 function toComposerAttachment(attachment: IDraftAttachment): IComposerAttachment {
-	const entry = attachment.entry;
+	return toComposerContextAttachment(attachment.entry, attachment.number);
+}
+
+function toComposerContextAttachment(entry: IChatRequestVariableEntry, number?: number): IComposerAttachment {
 	const resource = IChatRequestVariableEntry.toUri(entry);
 	if (resource && (entry.kind === 'file' || entry.kind === 'image')) {
 		return {
 			id: entry.id,
 			kind: entry.kind,
 			resource,
-			number: attachment.number,
-			mimeType: entry.kind === 'image' ? entry.mimeType ?? getMediaMime(resource.path) ?? 'image/*' : getMediaMime(resource.path) ?? 'application/octet-stream',
+			number,
+			isReadOnly: entry.isReadOnly,
+			mimeType: attachmentMimeType(entry),
 		};
 	}
 	const value = typeof entry.value === 'string' ? entry.value : undefined;
-	return { id: entry.id, kind: 'context', label: entry.name || entry.id, number: attachment.number, detail: value?.slice(0, 500) };
+	return { id: entry.id, kind: 'context', label: entry.name || entry.id, mimeType: attachmentMimeType(entry), number, detail: value?.slice(0, 500), isReadOnly: entry.isReadOnly };
 }
 
-function toComposerDraft(draft: IDraft): IComposerDraft {
+function toComposerDraft(draft: IDraft, automaticContext: IChatRequestVariableEntry | undefined): IComposerDraft {
+	const attachments = draft.attachments.filter(attachment => attachment.removedAt === undefined).sort((a, b) => a.number - b.number).map(toComposerAttachment);
+	if (automaticContext && !attachments.some(attachment => attachment.id === automaticContext.id)) {
+		attachments.unshift(toComposerContextAttachment(automaticContext));
+	}
 	return {
 		text: draft.text,
-		attachments: draft.attachments.filter(attachment => attachment.removedAt === undefined).sort((a, b) => a.number - b.number).map(toComposerAttachment),
+		attachments,
 	};
 }
 
@@ -85,9 +92,11 @@ class GroupComposer extends Disposable {
 	private readonly model: ComposerModel<ICompactComposerPluginActivationContext>;
 	private readonly host: FloatingComposerHost;
 	private readonly bindings = this._register(new DisposableStore());
+	private readonly moveGuards = this._register(new DisposableMap<EditorInput>());
 	private tabKey: ITabKey | undefined;
 	private thread: IThread | undefined;
 	private syncing = false;
+	private readonly diagnosticsChanged = this._register(new Emitter<void>());
 	private visible = true;
 
 	constructor(
@@ -101,13 +110,14 @@ class GroupComposer extends Disposable {
 		@IConfigurationService private readonly configurationService: IConfigurationService,
 		@ISideChatOpener private readonly sideChatOpener: ISideChatOpener,
 		@IQuickInputService private readonly quickInputService: IQuickInputService,
+		@IEditorGroupsService private readonly editorGroupsService: IEditorGroupsService,
 	) {
 		super();
 		this.model = this._register(new ComposerModel<ICompactComposerPluginActivationContext>(
 			{ submit: (draft, kind) => this.submit(draft, kind) },
 			{ initialDraft: { text: '', attachments: [] }, initialCapabilities: {}, supportsSteering: true, preferredPendingKind: ComposerSubmitKind.Queued },
 		));
-		this.host = this._register(instantiationService.createInstance(FloatingComposerHost, container, this.model, { openInSideChat: () => this.openInSideChat() }));
+		this.host = this._register(instantiationService.createInstance(FloatingComposerHost, container, this.model, { openInSideChat: () => this.openInSideChat(), prepareInput: query => this.prepareInput(query), fixReferences: () => this.fixReferences() }));
 		this._register(this.model.registerPlugin(this.newThreadPlugin()));
 		this._register(this.model.registerPlugin(this.threadSwitcherPlugin()));
 		this._register(this.model.registerPlugin(this.fixReferencesPlugin()));
@@ -116,7 +126,7 @@ class GroupComposer extends Disposable {
 		}
 		this._register(this.model.onDidChange(() => this.pushModelToDraft()));
 		this._register(this.draftService.onDidChangeDraft(key => {
-			if (this.tabKey && tabKeyEquals(key, this.tabKey)) {
+			if (!this.syncing && this.tabKey && tabKeyEquals(key, this.tabKey)) {
 				this.pullDraftIntoModel();
 			}
 		}));
@@ -126,9 +136,11 @@ class GroupComposer extends Disposable {
 			}
 		}));
 		this._register(this.group.onDidActiveEditorChange(() => this.bindActiveEditor()));
+		this._register(this.group.onDidModelChange(() => this.updateMoveGuards()));
+		this.updateMoveGuards();
 		this._register(this.group.onWillMoveEditor(event => {
 			const from = tabKeyForEditor(this.group.id, event.editor);
-			if (from && this.tabKey && tabKeyEquals(from, this.tabKey) && event.target !== this.group.id) {
+			if (from && event.target !== this.group.id) {
 				const to: ITabKey = { ...from, groupId: event.target };
 				this.draftService.rekey(from, to);
 				this.threadService.rekey(from, to);
@@ -158,6 +170,7 @@ class GroupComposer extends Disposable {
 		}
 		this.bindings.clear();
 		this.tabKey = tabKey;
+		this.syncing = true;
 		this.host.setVisible(this.visible && !!tabKey);
 		this.model.setDisabled(!tabKey);
 		if (!tabKey) {
@@ -165,6 +178,7 @@ class GroupComposer extends Disposable {
 			this.host.bindModel(undefined);
 			this.model.setDraft({ text: '', attachments: [] });
 			this.model.setDiagnostics([]);
+			this.syncing = false;
 			return;
 		}
 		this.pullDraftIntoModel();
@@ -189,7 +203,7 @@ class GroupComposer extends Disposable {
 			const live = draft.attachments.filter(attachment => attachment.removedAt === undefined);
 			const widgetIds = new Set(widget.attachmentModel.attachments.map(entry => entry.id));
 			for (const entry of widget.attachmentModel.attachments) {
-				if (!live.some(attachment => attachment.entry.id === entry.id)) {
+				if (!entry.isReadOnly && !live.some(attachment => attachment.entry.id === entry.id)) {
 					this.draftService.addAttachment(this.tabKey, entry);
 				}
 			}
@@ -206,23 +220,28 @@ class GroupComposer extends Disposable {
 		this.thread = thread;
 		const branch = thread && this.threadService.getActiveBranch(thread.id);
 		if (!branch) {
-			this.host.bindModel(undefined);
+			this.bindWidgetModel(undefined);
 			return;
 		}
-		let model = this.chatService.getSession(branch.sessionResource);
-		if (!model) {
-			const turns = await this.threadService.getTurns(thread.id, branch.id); // loads the session
-			model = this.chatService.getSession(branch.sessionResource);
-			if (!model && turns.length === 0) {
-				return;
-			}
-		}
+		// Retain the restored session even when another host has already loaded it.
+		await this.threadService.getTurns(thread.id, branch.id);
+		const model = this.chatService.getSession(branch.sessionResource);
 		if (this.thread !== thread) {
 			return;
 		}
-		this.host.bindModel(model);
+		this.bindWidgetModel(model);
 		this.applyDefaultAgent();
 		this.syncSubmissionState();
+	}
+
+	private bindWidgetModel(model: Parameters<FloatingComposerHost['bindModel']>[0]): void {
+		this.syncing = true;
+		try {
+			this.host.bindModel(model);
+		} finally {
+			this.syncing = false;
+		}
+		this.pullDraftIntoModel();
 	}
 
 	private applyDefaultAgent(): void {
@@ -240,8 +259,13 @@ class GroupComposer extends Disposable {
 		}
 		this.syncing = true;
 		try {
-			const draft = this.draftService.getDraft(this.tabKey);
-			const composerDraft = toComposerDraft(draft);
+			let draft = this.draftService.getDraft(this.tabKey);
+			const automaticContext = this.automaticContext();
+			if (automaticContext && !draft.attachments.some(attachment => attachment.removedAt === undefined && attachment.entry.id === automaticContext.id)) {
+				this.draftService.addAttachment(this.tabKey, automaticContext);
+				draft = this.draftService.getDraft(this.tabKey);
+			}
+			const composerDraft = toComposerDraft(draft, automaticContext);
 			const current = this.model.getSnapshot().draft;
 			if (current.text !== composerDraft.text || !sameAttachments(current.attachments, composerDraft.attachments)) {
 				this.model.setDraft(composerDraft);
@@ -258,6 +282,7 @@ class GroupComposer extends Disposable {
 				widget.inputPart.setValue(draft.text, false);
 			}
 			this.syncAttachmentsToWidget(draft);
+			this.diagnosticsChanged.fire();
 		} finally {
 			this.syncing = false;
 		}
@@ -283,13 +308,22 @@ class GroupComposer extends Disposable {
 	private syncAttachmentsToWidget(draft: IDraft): void {
 		const attachmentModel = this.host.chatWidget.attachmentModel;
 		const live = draft.attachments.filter(attachment => attachment.removedAt === undefined);
-		const current = new Set(attachmentModel.attachments.map(entry => entry.id));
-		const wanted = new Set(live.map(attachment => attachment.entry.id));
-		const deleted = [...current].filter(id => !wanted.has(id));
-		const added = live.filter(attachment => !current.has(attachment.entry.id)).map(attachment => attachment.entry);
-		if (deleted.length || added.length) {
-			attachmentModel.updateContext(deleted, added);
+		const wanted = new Map<string, IChatRequestVariableEntry>();
+		const automaticContext = this.automaticContext();
+		if (automaticContext) {
+			wanted.set(automaticContext.id, automaticContext);
 		}
+		for (const attachment of live) {
+			wanted.set(attachment.entry.id, toNumberedChatAttachment(attachment));
+		}
+		const deleted = attachmentModel.attachments.map(entry => entry.id).filter(id => !wanted.has(id));
+		if (deleted.length || wanted.size) {
+			attachmentModel.updateContext(deleted, wanted.values());
+		}
+	}
+
+	private automaticContext(): IChatRequestVariableEntry | undefined {
+		return this.tabKey ? { ...toFileVariableEntry(this.tabKey.resource), isReadOnly: true } : undefined;
 	}
 
 	private syncSubmissionState(): void {
@@ -301,42 +335,68 @@ class GroupComposer extends Disposable {
 		});
 	}
 
+	private updateMoveGuards(): void {
+		const editors = this.group.editors;
+		for (const editor of this.moveGuards.keys()) {
+			if (!editors.includes(editor)) { this.moveGuards.deleteAndDispose(editor); }
+		}
+		for (const editor of editors) {
+			if (this.moveGuards.has(editor) || !tabKeyForEditor(this.group.id, editor)) { continue; }
+			this.moveGuards.set(editor, editor.registerMoveGuard((source, target) => {
+				if (source !== this.group.id || source === target || !this.editorGroupsService.getGroup(target)?.contains(editor)) { return true; }
+				const from = tabKeyForEditor(source, editor)!;
+				const to = { ...from, groupId: target };
+				const hasState = [from, to].some(key => {
+					const draft = this.draftService.getDraft(key);
+					return !!draft.text || draft.attachments.some(attachment => !attachment.entry.isReadOnly) || this.threadService.listThreads({ tabKey: key }).length > 0;
+				});
+				return hasState ? localize('latent.composer.moveCollision', "This file is already open in the destination group. Moving it would merge two tabs with separate chat drafts or threads. Both tabs have been kept. Move to another group to preserve their independent chat state.") : true;
+			}));
+		}
+	}
+
 	private async ensureThread(): Promise<IThread> {
 		if (!this.tabKey) {
 			throw new Error(localize('latent.composer.noTab', "Open an editable file before sending a prompt."));
 		}
 		if (!this.thread) {
-			const thread = await this.threadService.createThread({ tabKey: this.tabKey });
+			const tabKey = this.tabKey;
+			const thread = await this.threadService.createThread({ tabKey });
+			if (!tabKeyEquals(tabKey, this.tabKey)) {
+				throw new Error(localize('latent.composer.tabChanged', "The active tab changed. Your draft has been kept."));
+			}
 			await this.bindThread(thread);
 		}
 		return this.thread!;
 	}
 
-	private async submit(_draft: IComposerDraft, kind: ComposerSubmitKind): Promise<void> {
-		if (!this.tabKey) {
+	private async prepareInput(query: string): Promise<{ query: string; references: ReturnType<typeof createDraftReferences>; onRequestAccepted: () => void }> {
+		const tabKey = this.tabKey;
+		if (!tabKey) {
 			throw new Error(localize('latent.composer.noTab', "Open an editable file before sending a prompt."));
 		}
-		const tabKey = this.tabKey;
+		this.draftService.setText(tabKey, query);
 		const prepared = this.draftService.prepareForSend(tabKey);
 		await this.ensureThread();
-		const widget = this.host.chatWidget;
-		this.syncing = true;
-		try {
-			widget.attachmentModel.clear();
-			widget.attachmentModel.addContext(...prepared.attachments.map(attachment => attachment.entry));
-		} finally {
-			this.syncing = false;
+		if (!tabKeyEquals(tabKey, this.tabKey)) {
+			throw new Error(localize('latent.composer.tabChanged', "The active tab changed. Your draft has been kept."));
 		}
+		return { query: prepared.displayText, references: createDraftReferences(prepared.displayText, prepared.attachments), onRequestAccepted: () => {
+			// A delayed acceptance must not erase edits made in the meantime.
+			if (this.draftService.getDraft(tabKey).text === query) {
+				this.draftService.clearAfterSend(tabKey);
+			}
+			this.host.expand();
+		} };
+	}
+
+	private async submit(draft: IComposerDraft, kind: ComposerSubmitKind): Promise<void> {
 		const queue = kind === ComposerSubmitKind.Send ? undefined : kind === ComposerSubmitKind.Steering ? ChatRequestQueueKind.Steering : ChatRequestQueueKind.Queued;
 		await new Promise<void>((resolve, reject) => {
 			let accepted = false;
-			void widget.acceptInput(prepared.text, {
+			void this.host.chatWidget.acceptInput(draft.text, {
 				queue,
-				onRequestAccepted: () => {
-					accepted = true;
-					this.draftService.clearAfterSend(tabKey);
-					resolve();
-				},
+				onRequestAccepted: () => { accepted = true; resolve(); },
 			}).then(() => {
 				if (!accepted) {
 					reject(new Error(localize('latent.composer.requestNotAccepted', "The chat request was not accepted.")));
@@ -347,8 +407,12 @@ class GroupComposer extends Disposable {
 
 	private async openInSideChat(): Promise<void> {
 		const thread = await this.ensureThread();
-		this.host.collapse();
-		await this.sideChatOpener.open(thread.id, 'editorArea');
+		const widget = await this.sideChatOpener.open(thread.id, 'editorArea');
+		if (widget) {
+			this.host.collapse();
+			this.thread = undefined;
+			this.bindWidgetModel(undefined);
+		}
 	}
 
 	private newThreadPlugin(): IComposerPlugin<ICompactComposerPluginActivationContext> {
@@ -377,7 +441,7 @@ class GroupComposer extends Disposable {
 			order: -10,
 			onDidChange: onDidChange.event,
 			getState: () => ({
-				label: this.thread?.title ?? localize('latent.composer.threads', "Threads"),
+				label: this.thread?.title || localize('latent.composer.threads', "Threads"),
 				icon: 'threads',
 				presentation: 'iconLabel',
 				dropdown: true,
@@ -408,36 +472,38 @@ class GroupComposer extends Disposable {
 			id: 'latent.fixReferences',
 			placement: 'header',
 			order: 100,
-			onDidChange: this.model.onDidChange,
+			onDidChange: this.diagnosticsChanged.event,
 			getState: () => ({
 				label: localize('latent.composer.fixReferences', "Fix References"),
 				icon: 'fix',
 				presentation: 'iconLabel',
 				disabled: this.model.getSnapshot().diagnostics.length === 0,
 			}),
-			activate: async () => {
-				if (!this.tabKey) {
-					return;
-				}
-				const tabKey = this.tabKey;
-				const picks: (IQuickPickItem & { apply: () => void })[] = [];
-				for (const diagnostic of this.draftService.validateReferences(tabKey)) {
-					if (diagnostic.quickFixes.includes('reAddAttachment')) {
-						picks.push({ label: localize('latent.composer.reAdd', "Re-add attachment for #{0}", diagnostic.number), apply: () => this.draftService.reAddAttachment(tabKey, diagnostic.number) });
-					}
-					picks.push({ label: localize('latent.composer.removeReference', "Remove reference #{0}", diagnostic.number), apply: () => this.draftService.removeReference(tabKey, diagnostic.number) });
-				}
-				const picked = await this.quickInputService.pick(picks, { placeHolder: localize('latent.composer.pickFix', "Choose how to fix the reference"), canPickMany: false });
-				picked?.apply();
-			},
+			activate: () => this.fixReferences(),
 		};
+	}
+
+	private async fixReferences(): Promise<void> {
+		if (!this.tabKey) {
+			return;
+		}
+		const tabKey = this.tabKey;
+		const picks: (IQuickPickItem & { apply: () => void })[] = [];
+		for (const diagnostic of this.draftService.validateReferences(tabKey)) {
+			if (diagnostic.quickFixes.includes('reAddAttachment')) {
+				picks.push({ label: localize('latent.composer.reAdd', "Re-add attachment for #{0}", diagnostic.number), apply: () => this.draftService.reAddAttachment(tabKey, diagnostic.number) });
+			}
+			picks.push({ label: localize('latent.composer.removeReference', "Remove reference #{0}", diagnostic.number), apply: () => this.draftService.removeReference(tabKey, diagnostic.number) });
+		}
+		const picked = await this.quickInputService.pick(picks, { placeHolder: localize('latent.composer.pickFix', "Choose how to fix the reference"), canPickMany: false });
+		picked?.apply();
 	}
 }
 
 function sameAttachments(first: readonly IComposerAttachment[], second: readonly IComposerAttachment[]): boolean {
 	return first.length === second.length && first.every((attachment, index) => {
 		const other = second[index];
-		return attachment.id === other.id && attachment.kind === other.kind && attachment.number === other.number
+		return attachment.id === other.id && attachment.kind === other.kind && attachment.number === other.number && attachment.mimeType === other.mimeType && attachment.isReadOnly === other.isReadOnly
 			&& (attachment.kind === 'context' ? other.kind === 'context' && attachment.label === other.label : other.kind !== 'context' && attachment.resource.toString() === other.resource.toString());
 	});
 }

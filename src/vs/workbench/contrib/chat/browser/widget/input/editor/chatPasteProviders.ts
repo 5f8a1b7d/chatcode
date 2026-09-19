@@ -29,7 +29,7 @@ import { IInstantiationService } from '../../../../../../../platform/instantiati
 import { IConfigurationService } from '../../../../../../../platform/configuration/common/configuration.js';
 import { ILogService } from '../../../../../../../platform/log/common/log.js';
 import { IExtensionService, isProposedApiEnabled } from '../../../../../../services/extensions/common/extensions.js';
-import { IChatRequestPasteVariableEntry, IChatRequestVariableEntry, isImageVariableEntry, toPasteVariableEntry, ChatPasteAttachmentMetadata } from '../../../../common/attachments/chatVariableEntries.js';
+import { IChatRequestPasteVariableEntry, IChatRequestVariableEntry, isImageVariableEntry, toPasteVariableEntry, ChatPasteAttachmentMetadata, formatChatAttachmentReference } from '../../../../common/attachments/chatVariableEntries.js';
 import { chatVariableLeader } from '../../../../common/requestParser/chatParserTypes.js';
 import { IDynamicVariable } from '../../../../common/attachments/chatVariables.js';
 import { IChatPasteTarget, IChatPasteTargetService } from '../../../chat.js';
@@ -457,6 +457,7 @@ export class PasteTextProvider implements DocumentPasteEditProvider {
 		}
 		const artifact = hasRicherPaste ? undefined : createPastedTextArtifact(textdata, target.attachments, {
 			content: markdown,
+			attachmentNumber: target.nextAttachmentNumber,
 			minLength: this.configurationService.getValue<number>(ChatConfiguration.PasteAsAttachmentThreshold, { resource: model.uri }),
 		});
 		if (artifact) {
@@ -511,6 +512,8 @@ export function createPastedTextArtifact(
 		readonly content?: string;
 		/** Character count the paste must exceed to become an attachment. */
 		readonly minLength?: number;
+		/** Number assigned by the destination input's context model. */
+		readonly attachmentNumber?: number;
 	},
 ): { readonly attachment: IChatRequestPasteVariableEntry; readonly referenceText: string } | undefined {
 	const trimmed = text.trim();
@@ -539,8 +542,14 @@ export function createPastedTextArtifact(
 	});
 
 	return {
-		attachment,
-		referenceText: `${chatVariableLeader}attachment:${name}`,
+		attachment: options?.attachmentNumber === undefined ? attachment : {
+			...attachment,
+			attachmentNumber: options.attachmentNumber,
+			attachmentMimeType: content ? 'text/markdown' : Mimes.text,
+		},
+		referenceText: options?.attachmentNumber === undefined
+			? `${chatVariableLeader}attachment:${name}`
+			: formatChatAttachmentReference(options.attachmentNumber, content ? 'text/markdown' : Mimes.text),
 	};
 }
 

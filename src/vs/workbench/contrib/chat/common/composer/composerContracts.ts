@@ -51,9 +51,9 @@ export type IComposerAttachmentCapabilities = Readonly<Pick<IChatAgentAttachment
  * with a display label. `number` is the Latent attachment number (P1-FR-050).
  */
 export type IComposerAttachment =
-	{ readonly kind: 'image'; readonly resource: URI; readonly mimeType: string; readonly id: string; readonly number?: number } |
-	{ readonly kind: 'file'; readonly resource: URI; readonly mimeType: string; readonly id: string; readonly number?: number } |
-	{ readonly kind: 'context'; readonly label: string; readonly id: string; readonly number?: number; readonly detail?: string };
+	{ readonly kind: 'image'; readonly resource: URI; readonly mimeType: string; readonly id: string; readonly number?: number; readonly isReadOnly?: boolean } |
+	{ readonly kind: 'file'; readonly resource: URI; readonly mimeType: string; readonly id: string; readonly number?: number; readonly isReadOnly?: boolean } |
+	{ readonly kind: 'context'; readonly label: string; readonly mimeType: string; readonly id: string; readonly number?: number; readonly detail?: string; readonly isReadOnly?: boolean };
 
 /** A problem with a `#<number>` reference that blocks sending (P1-FR-053). */
 export interface IComposerDiagnostic {

@@ -13,7 +13,7 @@ export function registerAskInSideChatPlugin(api: ILatentSelectionApi): vscode.Di
 		title: vscode.l10n.t('Ask in Side Chat'),
 		icon: 'comment-discussion',
 		order: 40,
-		when: "latent.selection.source == 'thread' && latent.selection.hasThread",
+		when: "latent.selection.source == editor || latent.selection.source == thread",
 		run: async context => {
 			await vscode.commands.executeCommand('latent.selection.askInSideChat', context.selection);
 		},

@@ -467,7 +467,9 @@ export class ChatInputPart extends Disposable implements IHistoryNavigationWidge
 
 		if (this.implicitContext) {
 			const implicitChatVariables = this.implicitContext.enabledBaseEntries(this.configurationService.getValue<boolean>('chat.implicitContext.suggestedContext'));
-			contextArr.add(...implicitChatVariables);
+			contextArr.add(...implicitChatVariables
+				.filter(entry => !isImplicitContextAlreadyAttached(this.attachmentModel.attachments, IChatRequestVariableEntry.toUri(entry), isLocation(entry.value) ? entry.value.range : undefined, entry.kind === 'string' ? entry.handle : undefined))
+				.map(entry => this.attachmentModel.getNumberedImplicitContext(entry)));
 		}
 		return contextArr;
 	}
@@ -4309,7 +4311,7 @@ export class ChatInputPart extends Disposable implements IHistoryNavigationWidge
 			const shouldFocusClearButton = index === Math.min(this._indexOfLastAttachedContextDeletedWithKeyboard, attachments.length - 1) && this._indexOfLastAttachedContextDeletedWithKeyboard > -1;
 
 			let attachmentWidget;
-			const options = { shouldFocusClearButton, supportsDeletion: true, isCurrentInput: true };
+			const options = { shouldFocusClearButton, supportsDeletion: !attachment.isReadOnly, isCurrentInput: true };
 			const lm = this._currentLanguageModel.get();
 			if (attachment.kind === 'tool' || attachment.kind === 'toolset') {
 				attachmentWidget = this.instantiationService.createInstance(ToolSetOrToolItemAttachmentWidget, attachment, lm, options, container, this._contextResourceLabels);

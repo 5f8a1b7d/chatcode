@@ -65,9 +65,9 @@ export interface IThreadService {
 	readonly onDidChangeThreads: Event<void>;
 	readonly onDidChangeActiveBranch: Event<{ readonly threadId: string; readonly branchId: string }>;
 
-	createThread(options?: { tabKey?: ITabKey; title?: string; origin?: ThreadOrigin }): Promise<IThread>;
+	createThread(options?: { tabKey?: ITabKey; title?: string; origin?: ThreadOrigin; createdAt?: number; updatedAt?: number }): Promise<IThread>;
 	/** Adopts an existing chat session as a single-branch Thread (idempotent by session resource). */
-	adoptSession(sessionResource: URI, options?: { tabKey?: ITabKey; title?: string; origin?: ThreadOrigin }): IThread;
+	adoptSession(sessionResource: URI, options?: { tabKey?: ITabKey; title?: string; origin?: ThreadOrigin; createdAt?: number; updatedAt?: number }): IThread;
 	getThread(threadId: string): IThread | undefined;
 	getThreadBySession(sessionResource: URI): IThread | undefined;
 	listThreads(filter?: { tabKey?: ITabKey; query?: string }): readonly IThread[];

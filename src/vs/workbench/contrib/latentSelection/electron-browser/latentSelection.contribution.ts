@@ -1,5 +1,5 @@
 /* eslint-disable header/header */
-import { getActiveWindow } from '../../../../base/browser/dom.js';
+import { addDisposableListener, EventType, getActiveWindow } from '../../../../base/browser/dom.js';
 import { mainWindow } from '../../../../base/browser/window.js';
 import { RunOnceScheduler } from '../../../../base/common/async.js';
 import { Codicon } from '../../../../base/common/codicons.js';
@@ -13,6 +13,7 @@ import { ICodeEditor } from '../../../../editor/browser/editorBrowser.js';
 import { ICodeEditorService } from '../../../../editor/browser/services/codeEditorService.js';
 import { EditorOption } from '../../../../editor/common/config/editorOptions.js';
 import { localize } from '../../../../nls.js';
+import { IClipboardService } from '../../../../platform/clipboard/common/clipboardService.js';
 import { CommandsRegistry, ICommandService } from '../../../../platform/commands/common/commands.js';
 import { IConfigurationService } from '../../../../platform/configuration/common/configuration.js';
 import { ContextKeyExpr, IContextKeyService } from '../../../../platform/contextkey/common/contextkey.js';
@@ -128,7 +129,7 @@ export function selectionToAttachment(selection: ISelectionSnapshot): IChatReque
 		name: localize('latentSelection.attachmentName', "Selection ({0})", location),
 		value: selection.text,
 		icon: Codicon.listSelection,
-		modelDescription: `Text the user selected in ${selection.source} at ${new Date(selection.capturedAt).toISOString()}.`,
+		modelDescription: `Text the user selected in ${selection.source}${selection.threadId ? `, thread ${selection.threadId}, turn ${selection.turnId ?? "unknown"}` : ""} at ${new Date(selection.capturedAt).toISOString()}.`,
 	};
 }
 
@@ -154,6 +155,7 @@ class LatentSelectionContribution extends Disposable implements IWorkbenchContri
 		@IQuickInputService private readonly quickInputService: IQuickInputService,
 		@INotificationService private readonly notificationService: INotificationService,
 		@ILogService private readonly logService: ILogService,
+		@IClipboardService private readonly clipboardService: IClipboardService,
 		@ICodeEditorService codeEditorService: ICodeEditorService,
 	) {
 		super();
@@ -172,6 +174,9 @@ class LatentSelectionContribution extends Disposable implements IWorkbenchContri
 				this.publishSystemActions();
 			}
 		}));
+		this._register(addDisposableListener(mainWindow.document, EventType.POINTER_DOWN, () => {
+			void this.selectionService.hide(this.nativeHostService.windowId, true);
+		}, true));
 		this.publishSystemActions();
 	}
 
@@ -228,11 +233,12 @@ class LatentSelectionContribution extends Disposable implements IWorkbenchContri
 	}
 
 	private watchEditor(editor: ICodeEditor): void {
+		if (editor.isSimpleWidget) { return; }
 		const listeners = new DisposableStore();
 		this.editorListeners.set(editor, listeners);
 		listeners.add(editor.onDidDispose(() => this.editorListeners.deleteAndDispose(editor)));
-		listeners.add(editor.onMouseUp(event => {
-			if (!event.event.leftButton || !editor.hasTextFocus()) {
+		const capture = listeners.add(new RunOnceScheduler(() => {
+			if (!editor.hasTextFocus()) {
 				return;
 			}
 			const selection = editor.getSelection();
@@ -254,14 +260,16 @@ class LatentSelectionContribution extends Disposable implements IWorkbenchContri
 				...(raw.length > text.length ? { truncated: true } : {}),
 			};
 			this.show(snapshot);
-		}));
+		}, 250));
+		listeners.add(editor.onDidChangeCursorSelection(() => capture.schedule()));
+		listeners.add(editor.onMouseUp(() => capture.schedule()));
 	}
 
 	/** Captures text selected inside a rendered Thread transcript (P2-FR-010, source `thread`). */
 	private captureThreadSelection(): void {
 		const window = getActiveWindow();
 		const selection = window.getSelection();
-		const text = selection?.toString().trim() ?? '';
+		const text = selection?.toString() ?? '';
 		if (!selection || selection.isCollapsed || !text) {
 			this.lastThreadSelectionText = '';
 			return;
@@ -279,10 +287,15 @@ class LatentSelectionContribution extends Disposable implements IWorkbenchContri
 			return;
 		}
 		this.lastThreadSelectionText = text;
+		void this.clipboardService.writeText(text);
 		const thread = this.threadService.getThreadBySession(sessionResource) ?? this.threadService.adoptSession(sessionResource);
+		const element = anchor?.nodeType === 1 ? anchor as HTMLElement : anchor?.parentElement;
+		const turn = element ? widget.getElementFromNode(element) : undefined;
 		const snapshot: ISelectionSnapshot = {
 			selectionId: generateUuid(),
 			source: 'thread',
+			host: isIChatViewViewContext(widget.viewContext) ? 'secondarySideBar' : 'editorArea',
+			turnId: turn && 'id' in turn ? turn.id : undefined,
 			text: text.slice(0, MAX_SELECTION_LENGTH),
 			capturedAt: Date.now(),
 			editable: false,
@@ -317,7 +330,7 @@ class LatentSelectionContribution extends Disposable implements IWorkbenchContri
 	private async runAction(event: ISelectionActionEvent): Promise<void> {
 		switch (event.action) {
 			case BuiltinActionIds.AddToChat:
-				return this.addToChat(event.selection);
+				return this.addToChat(event.selection, event.comment);
 			case BuiltinActionIds.AskInSideChat:
 				return this.askInSideChat(event.selection);
 			case BuiltinActionIds.Edit:
@@ -334,24 +347,34 @@ class LatentSelectionContribution extends Disposable implements IWorkbenchContri
 		await this.commandService.executeCommand(LatentSelectionCommands.LegacyHandleAction, event);
 	}
 
-	private async addToChat(selection: ISelectionSnapshot): Promise<void> {
+	private async addToChat(selection: ISelectionSnapshot, comment?: string): Promise<void> {
 		const tabKey = this.floatingComposerService.getActiveTabKey();
 		if (tabKey) {
 			const number = this.draftService.addAttachment(tabKey, selectionToAttachment(selection));
+			if (comment?.trim()) {
+				const draft = this.draftService.getDraft(tabKey);
+				this.draftService.setText(tabKey, [draft.text, comment.trim()].filter(Boolean).join('\n'));
+			}
+			this.floatingComposerService.show();
 			this.notificationService.info(localize('latentSelection.addedToDraft', "Added to the chat draft as #{0}.", number));
 			return;
 		}
-		await this.sideChatOpener.openNew('systemSelection', { attachments: [selectionToAttachment(selection)] });
+		await this.sideChatOpener.openNew('systemSelection', { attachments: [selectionToAttachment(selection)], text: comment });
 	}
 
 	private async askInSideChat(selection: ISelectionSnapshot): Promise<void> {
-		if (!selection.threadId) {
-			throw new Error(localize('latentSelection.noThread', "Ask in Side Chat needs a selection inside a thread."));
+		const options = { attachments: [selectionToAttachment(selection)] };
+		if (selection.source === 'thread') {
+			await this.sideChatOpener.openNew(selection.host ?? 'editorArea', options);
+			return;
 		}
-		const branch = this.threadService.getActiveBranch(selection.threadId);
-		const widget = branch && this.chatWidgetService.getWidgetBySessionResource(branch.sessionResource);
-		const origin = widget && isIChatViewViewContext(widget.viewContext) ? 'secondarySideBar' : 'editorArea';
-		await this.sideChatOpener.open(selection.threadId, origin, { attachments: [selectionToAttachment(selection)] });
+		const tabKey = this.floatingComposerService.getActiveTabKey();
+		if (tabKey) {
+			const thread = this.threadService.getActiveThread(tabKey) ?? await this.threadService.createThread({ tabKey });
+			await this.sideChatOpener.open(thread.id, 'editorArea', options);
+		} else {
+			await this.sideChatOpener.openNew('editorArea', options);
+		}
 	}
 
 	private async edit(selection: ISelectionSnapshot): Promise<void> {
