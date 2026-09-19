@@ -23,6 +23,21 @@
 				"--use-daemon",
 				"-vv"
 			]
+		},
+		"playwright": {
+			"type": "stdio",
+			"command": "npx",
+			"args": [
+				"-y",
+				"@playwright/mcp@latest"
+			]
+		},
+		"cua-driver": {
+			"type": "stdio",
+			"command": "cua-driver",
+			"args": [
+				"mcp"
+			]
 		}
 	},
 	"inputs": []
