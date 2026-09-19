@@ -43,6 +43,9 @@ registerWorkbenchContribution2(FloatingComposerStartup.ID, FloatingComposerStart
 import { ThreadActionsContribution } from '../browser/threads/threadActions.js';
 registerWorkbenchContribution2(ThreadActionsContribution.ID, ThreadActionsContribution, WorkbenchPhase.AfterRestored);
 
+// The Editor Area title `+` on every editor
+import '../browser/editorTitleNewChat.js';
+
 // Sessions as a top-level search entry
 import '../browser/sessionsSearch/sessionsSearchView.js';
 

@@ -22,7 +22,6 @@ import { IToolData, IToolSet } from '../tools/languageModelToolsService.js';
 import type { ILanguageModelChatMetadata } from '../languageModels.js';
 import { decodeBase64, encodeBase64, VSBuffer } from '../../../../../base/common/buffer.js';
 import { Mutable } from '../../../../../base/common/types.js';
-import { getMediaOrTextMime, Mimes } from '../../../../../base/common/mime.js';
 
 
 /**
@@ -65,11 +64,11 @@ interface IBaseChatRequestVariableEntry {
 	readonly id: string;
 	readonly fullName?: string;
 	readonly icon?: ThemeIcon;
-	/** Whether an embedding host owns this context item and the user cannot remove it. */
+	/** Latent: whether an embedding host owns this context item and the user cannot remove it. */
 	readonly isReadOnly?: boolean;
-	/** Stable, host-assigned number used to reference this attachment from a draft. */
+	/** Latent: Attachment Number, set only when the input opts into numbering. */
 	readonly attachmentNumber?: number;
-	/** MIME type shown in the draft token for a numbered attachment. */
+	/** Latent: MIME type shown in the `#<number>:<MIME>` token of a numbered attachment. */
 	readonly attachmentMimeType?: string;
 	readonly name: string;
 	readonly modelDescription?: string;
@@ -91,29 +90,6 @@ interface IBaseChatRequestVariableEntry {
 	readonly _meta?: Record<string, unknown>;
 
 	omittedState?: OmittedState;
-}
-
-export function formatChatAttachmentName(number: number, name: string): string {
-	return `${number}:${name}`;
-}
-
-export function formatChatAttachmentReference(number: number, mimeType: string): string {
-	return `#${number}:${mimeType}`;
-}
-
-/** MIME displayed in a numbered context reference. */
-export function getChatAttachmentMimeType(entry: IChatRequestVariableEntry): string {
-	if (entry.attachmentMimeType) {
-		return entry.attachmentMimeType;
-	}
-	if ((entry.kind === 'image' || entry.kind === 'notebookOutput') && entry.mimeType) {
-		return entry.mimeType;
-	}
-	const resource = IChatRequestVariableEntry.toUri(entry);
-	if (resource) {
-		return getMediaOrTextMime(resource.path) ?? (entry.kind === 'file' ? Mimes.text : Mimes.binary);
-	}
-	return typeof entry.value === 'string' ? Mimes.text : Mimes.unknown;
 }
 
 export interface IGenericChatRequestVariableEntry extends IBaseChatRequestVariableEntry {

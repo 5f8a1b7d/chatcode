@@ -11,6 +11,7 @@ import { getLatentDerivativeConfiguration } from '../latentProduct.js';
 import { createDecorator, IInstantiationService, ServicesAccessor } from '../../../../../platform/instantiation/common/instantiation.js';
 import { InstantiationType, registerSingleton } from '../../../../../platform/instantiation/common/extensions.js';
 import { IQuickInputService, IQuickPickItem } from '../../../../../platform/quickinput/common/quickInput.js';
+import { ILogService } from '../../../../../platform/log/common/log.js';
 import { IStorageService, StorageScope, StorageTarget } from '../../../../../platform/storage/common/storage.js';
 import { EditorInputCapabilities } from '../../../../common/editor.js';
 import { DiffEditorInput } from '../../../../common/editor/diffEditorInput.js';
@@ -20,12 +21,14 @@ import { IWorkbenchContribution } from '../../../../common/contributions.js';
 import { IEditorGroup, IEditorGroupsService } from '../../../../services/editor/common/editorGroupsService.js';
 import { ChatEditorInput } from '../../../chat/browser/widgetHosts/editor/chatEditorInput.js';
 import { IChatRequestVariableEntry, toFileVariableEntry } from '../../../chat/common/attachments/chatVariableEntries.js';
-import { ComposerSubmitKind, IComposerAttachment, IComposerDiagnostic, IComposerDraft, IComposerPlugin } from '../../../chat/common/composer/composerContracts.js';
-import { ComposerModel } from '../../../chat/common/composer/composerModel.js';
+import { ComposerSubmitKind, IComposerAttachment, IComposerDiagnostic, IComposerDraft, IComposerPlugin } from '../../common/composer/composerContracts.js';
+import { ComposerModel } from '../../common/composer/composerModel.js';
 import { ChatRequestQueueKind, IChatService } from '../../../chat/common/chatService/chatService.js';
 import { ChatConfiguration, ChatModeKind } from '../../../chat/common/constants.js';
 import { IChatAgentService } from '../../../chat/common/participants/chatAgents.js';
-import { ICompactComposerPluginActivationContext } from '../../../chat/browser/widget/input/compactComposer.js';
+import { ICompactComposerPluginActivationContext } from '../composer/compactComposer.js';
+import { NativeComposerPlugins } from '../composer/nativeComposerPlugins.js';
+import { getEditorGroupElement } from '../editorGroupMount.js';
 import { IDraft, IDraftAttachment, ITabDraftService, attachmentMimeType, createDraftReferences, toNumberedChatAttachment } from '../../common/drafts.js';
 import { ISideChatOpener } from '../sideChat/sideChatOpener.js';
 import { ITabKey, tabKeyEquals } from '../../common/tabKey.js';
@@ -123,7 +126,7 @@ class GroupComposer extends Disposable {
 		this._register(this.model.registerPlugin(this.newThreadPlugin()));
 		this._register(this.model.registerPlugin(this.threadSwitcherPlugin()));
 		this._register(this.model.registerPlugin(this.fixReferencesPlugin()));
-		for (const plugin of this.host.chatWidget.inputPart.getComposerPlugins()) {
+		for (const plugin of this._register(instantiationService.createInstance(NativeComposerPlugins, this.host.chatWidget)).plugins) {
 			this._register(this.model.registerPlugin(plugin));
 		}
 		this._register(this.model.onDidChange(() => this.pushModelToDraft()));
@@ -523,6 +526,7 @@ export class FloatingComposerService extends Disposable implements IFloatingComp
 		@IEditorGroupsService private readonly editorGroupsService: IEditorGroupsService,
 		@IInstantiationService private readonly instantiationService: IInstantiationService,
 		@IStorageService private readonly storageService: IStorageService,
+		@ILogService private readonly logService: ILogService,
 	) {
 		super();
 		this.visible = this.storageService.getBoolean(VISIBLE_KEY, StorageScope.PROFILE, true);
@@ -534,8 +538,12 @@ export class FloatingComposerService extends Disposable implements IFloatingComp
 	}
 
 	private attach(group: IEditorGroup): void {
-		const element = (group as unknown as { element?: HTMLElement }).element;
-		if (!element || this.composers.has(group.id)) {
+		if (this.composers.has(group.id)) {
+			return;
+		}
+		const element = getEditorGroupElement(group);
+		if (!element) {
+			this.logService.warn(`[Latent] Editor group ${group.id} exposes no DOM element; its Floating Composer is not mounted.`);
 			return;
 		}
 		const composer = this.instantiationService.createInstance(GroupComposer, group, element);

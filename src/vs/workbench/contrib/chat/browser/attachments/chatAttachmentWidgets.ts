@@ -73,7 +73,8 @@ import { IChatContentReference } from '../../common/chatService/chatService.js';
 import { buildOpenSessionLinkForChatResource } from '../../../../../platform/agentHost/common/openSessionLink.js';
 import { coerceImageBuffer } from '../../common/chatImageExtraction.js';
 import { ChatConfiguration } from '../../common/constants.js';
-import { formatChatAttachmentName, getImageAttachmentLimit, isPastedTextArtifact, IChatRequestPasteVariableEntry, IChatRequestVariableEntry, IBrowserViewVariableEntry, IChatRequestChatReferenceVariableEntry, IChatRequestTranscriptContextVariableEntry, IElementVariableEntry, INotebookOutputVariableEntry, IPromptFileVariableEntry, IPromptTextVariableEntry, ISCMHistoryItemVariableEntry, OmittedState, PromptFileVariableKind, ChatRequestToolReferenceEntry, ISCMHistoryItemChangeVariableEntry, ISCMHistoryItemChangeRangeVariableEntry, ITerminalVariableEntry, isStringVariableEntry, resolveChatContextIcon, ChatContextIconPath } from '../../common/attachments/chatVariableEntries.js';
+import { formatAttachmentNumberName } from '../../../latent/common/attachmentNumbers.js';
+import { getImageAttachmentLimit, isPastedTextArtifact, IChatRequestPasteVariableEntry, IChatRequestVariableEntry, IBrowserViewVariableEntry, IChatRequestChatReferenceVariableEntry, IChatRequestTranscriptContextVariableEntry, IElementVariableEntry, INotebookOutputVariableEntry, IPromptFileVariableEntry, IPromptTextVariableEntry, ISCMHistoryItemVariableEntry, OmittedState, PromptFileVariableKind, ChatRequestToolReferenceEntry, ISCMHistoryItemChangeVariableEntry, ISCMHistoryItemChangeRangeVariableEntry, ITerminalVariableEntry, isStringVariableEntry, resolveChatContextIcon, ChatContextIconPath } from '../../common/attachments/chatVariableEntries.js';
 import { ILanguageModelChatMetadataAndIdentifier, ILanguageModelsService, isAutoLanguageModel } from '../../common/languageModels.js';
 import { ILanguageModelToolsService, isToolSet } from '../../common/tools/languageModelToolsService.js';
 import { getCleanPromptName } from '../../common/promptSyntax/config/promptFileLocations.js';
@@ -167,7 +168,7 @@ abstract class AbstractChatAttachmentWidget extends Disposable {
 		this.element = dom.append(container, $('.chat-attached-context-attachment.show-file-icons'));
 		this.attachClearButton();
 		if (attachment.attachmentNumber !== undefined) {
-			dom.append(this.element, $('span.chat-attached-context-attachment-number', undefined, formatChatAttachmentName(attachment.attachmentNumber, '')));
+			dom.append(this.element, $('span.chat-attached-context-attachment-number', undefined, formatAttachmentNumberName(attachment.attachmentNumber, '')));
 		}
 		this.label = contextResourceLabels.create(this.element, { supportIcons: true, hoverTargetOverride: this.element });
 		this._register(this.label);

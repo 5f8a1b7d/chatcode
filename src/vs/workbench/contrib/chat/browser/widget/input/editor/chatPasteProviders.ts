@@ -29,10 +29,11 @@ import { IInstantiationService } from '../../../../../../../platform/instantiati
 import { IConfigurationService } from '../../../../../../../platform/configuration/common/configuration.js';
 import { ILogService } from '../../../../../../../platform/log/common/log.js';
 import { IExtensionService, isProposedApiEnabled } from '../../../../../../services/extensions/common/extensions.js';
-import { IChatRequestPasteVariableEntry, IChatRequestVariableEntry, isImageVariableEntry, toPasteVariableEntry, ChatPasteAttachmentMetadata, formatChatAttachmentReference } from '../../../../common/attachments/chatVariableEntries.js';
+import { IChatRequestPasteVariableEntry, IChatRequestVariableEntry, isImageVariableEntry, toPasteVariableEntry, ChatPasteAttachmentMetadata } from '../../../../common/attachments/chatVariableEntries.js';
 import { chatVariableLeader } from '../../../../common/requestParser/chatParserTypes.js';
 import { IDynamicVariable } from '../../../../common/attachments/chatVariables.js';
 import { IChatPasteTarget, IChatPasteTargetService } from '../../../chat.js';
+import { formatAttachmentNumberReference } from '../../../../../latent/common/attachmentNumbers.js';
 import { chatInputSchemes, isChatInputModel, ChatConfiguration } from '../../../../common/constants.js';
 import { cleanupOldImages, createFileForMedia, resizeImage } from '../../../chatImageUtils.js';
 
@@ -549,7 +550,7 @@ export function createPastedTextArtifact(
 		},
 		referenceText: options?.attachmentNumber === undefined
 			? `${chatVariableLeader}attachment:${name}`
-			: formatChatAttachmentReference(options.attachmentNumber, content ? 'text/markdown' : Mimes.text),
+			: formatAttachmentNumberReference(options.attachmentNumber, content ? 'text/markdown' : Mimes.text),
 	};
 }
 

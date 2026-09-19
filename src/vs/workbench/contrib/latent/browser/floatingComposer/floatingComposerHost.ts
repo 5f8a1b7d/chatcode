@@ -13,10 +13,11 @@ import { IContextKeyService } from '../../../../../platform/contextkey/common/co
 import { ServiceCollection } from '../../../../../platform/instantiation/common/serviceCollection.js';
 import { IStorageService, StorageScope, StorageTarget } from '../../../../../platform/storage/common/storage.js';
 import { editorBackground, foreground, inputBackground } from '../../../../../platform/theme/common/colorRegistry.js';
-import { ComposerModel } from '../../../chat/common/composer/composerModel.js';
+import { ComposerModel } from '../../common/composer/composerModel.js';
 import { ChatMode } from '../../../chat/common/chatModes.js';
 import { ChatWidget } from '../../../chat/browser/widget/chatWidget.js';
-import { renderCompactComposer, type ICompactComposerPluginActivationContext } from '../../../chat/browser/widget/input/compactComposer.js';
+import { renderCompactComposer, type ICompactComposerPluginActivationContext } from '../composer/compactComposer.js';
+import { ChatAttachmentNumbering } from '../attachmentNumbering.js';
 import './media/floatingComposer.css';
 
 const EDGE_GAP = 12;
@@ -117,7 +118,7 @@ export class FloatingComposerHost extends Disposable {
 			ChatWidget,
 			ChatAgentLocation.Chat,
 			{ isQuickChat: true },
-			{ autoScroll: true, renderStyle: 'compact', enableFind: true, renderFollowups: true, defaultMode: ChatMode.Ask, prepareInput: query => this._callbacks.prepareInput(query) },
+			{ autoScroll: true, renderStyle: 'compact', enableFind: true, renderFollowups: true, defaultMode: ChatMode.Ask, prepareInput: query => this._callbacks.prepareInput(query), createAttachmentNumbering: () => new ChatAttachmentNumbering() },
 			{ listForeground: foreground, listBackground: editorBackground, overlayBackground: editorBackground, inputEditorBackground: inputBackground, resultEditorBackground: editorBackground },
 		));
 		this._chatWidget.render(chatBody);

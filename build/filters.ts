@@ -12,7 +12,7 @@ import { join } from 'path';
  * named according to the checks performed on them. Each subset contains
  * the following one, as described in mathematical notation:
  *
- * all ⊃ eol ⊇ indentation ⊃ typescript
+ * all ⊃ eol ⊇ indentation ⊃ copyright ⊃ typescript
  */
 
 export const all = Object.freeze<string[]>([
@@ -169,6 +169,70 @@ export const indentationFilter = Object.freeze<string[]>([
 	'!extensions/ipynb/notebook-out/**',
 	'!extensions/notebook-renderers/renderer-out/*.js',
 	'!extensions/simple-browser/media/*.js',
+]);
+
+export const copyrightFilter = Object.freeze<string[]>([
+	'**',
+	'!**/*.desktop',
+	'!**/*.json',
+	'!**/*.jsonc',
+	'!**/*.jsonl',
+	'!**/*.html',
+	'!**/*.template',
+	'!**/*.md',
+	'!**/*.bat',
+	'!**/*.cmd',
+	'!**/*.ico',
+	'!**/*.gif',
+	'!**/*.opus',
+	'!**/*.mp3',
+	'!**/*.icns',
+	'!**/*.xml',
+	'!**/*.sh',
+	'!**/*.zsh',
+	'!**/*.fish',
+	'!**/*.txt',
+	'!**/*.xpm',
+	'!**/*.opts',
+	'!**/*.disabled',
+	'!**/*.code-workspace',
+	'!**/*.js.map',
+	'!**/*.wasm',
+	'!**/*.tiff',
+	'!**/*.provisionprofile',
+	'!build/**/*.init',
+	'!build/darwin/patch-dmg.py',
+	'!build/linux/libcxx-fetcher.*',
+	'!build/npm/gyp/custom-headers/**',
+	'!resources/linux/snap/snapcraft.yaml',
+	'!resources/win32/bin/code.js',
+	'!resources/completions/**',
+	'!extensions/configuration-editing/build/inline-allOf.ts',
+	'!extensions/markdown-language-features/media/highlight.css',
+	'!extensions/markdown-math/notebook-out/**',
+	'!extensions/ipynb/notebook-out/**',
+	'!extensions/simple-browser/media/codicon.css',
+	'!extensions/terminal-suggest/src/completions/upstream/**',
+	'!extensions/typescript-language-features/node-maintainer/**',
+	'!extensions/html-language-features/server/src/modes/typescript/*',
+	'!extensions/*/server/bin/*',
+	'!src/vs/platform/agentHost/node/codex/protocol/generated/**',
+	'!src/vs/workbench/contrib/terminal/common/scripts/psreadline/**',
+	'!extensions/mermaid-markdown-features/chat-webview-out/**',
+	'!extensions/mermaid-markdown-features/markdown-preview-out/**',
+	'!extensions/mermaid-markdown-features/notebook-out/**',
+
+	// vendored third-party libraries
+	'!src/vs/base/common/lit-html/**',
+	'!src/vs/base/common/signals-core/**',
+
+	// extensions/copilot has its own code style
+	'!extensions/copilot/**',
+
+	// Latent fork: fork-owned files carry no Microsoft header (see FORK.md)
+	'!extensions/latent-*/**',
+	'!src/vs/**/latent*/**',
+	'!src/vs/**/latent*.ts',
 ]);
 
 export const tsFormattingFilter = Object.freeze<string[]>([

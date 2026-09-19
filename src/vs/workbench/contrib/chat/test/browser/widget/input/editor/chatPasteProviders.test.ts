@@ -28,19 +28,6 @@ import { ChatResponseResource } from '../../../../../common/model/chatModel.js';
 suite('Chat Paste Providers', () => {
 	const store = ensureNoDisposablesAreLeakedInTestSuite();
 
-	test('uses the destination context number and MIME for pasted draft references', () => {
-		const text = createPastedTextArtifact('hello', [], { minLength: 0, attachmentNumber: 3 });
-		const markdown = createPastedTextArtifact('hello', [], { minLength: 0, attachmentNumber: 4, content: '**hello**' });
-		assert.deepStrictEqual([text, markdown].map(artifact => ({
-			reference: artifact?.referenceText,
-			number: artifact?.attachment.attachmentNumber,
-			mime: artifact?.attachment.attachmentMimeType,
-		})), [
-			{ reference: '#3:text/plain', number: 3, mime: 'text/plain' },
-			{ reference: '#4:text/markdown', number: 4, mime: 'text/markdown' },
-		]);
-	});
-
 	test('does not offer an opened artifact back as attachable context', () => {
 		// Opening an artifact makes it the active editor; offering it as context
 		// would re-attach text the attachment already carries.
@@ -222,7 +209,6 @@ suite('Chat Paste Providers', () => {
 		const inlineAttachments: { entry: IChatRequestVariableEntry; text: string; range: IRange }[] = [];
 		let isTerminalCommandPaste = false;
 		const target: IChatPasteTarget = {
-			nextAttachmentNumber: 3,
 			sessionResource: URI.parse('chat-session:/test'),
 			get attachments() { return attachments; },
 			get inlineReferences() { return []; },
@@ -311,7 +297,7 @@ suite('Chat Paste Providers', () => {
 			leavesCopiedChatAttachmentsToAttachmentPaste: undefined,
 			leavesMultipleCursorsToPlainTextPaste: undefined,
 			leavesTerminalCommandsAsText: undefined,
-			insertText: '#3:text/plain ',
+			insertText: '#attachment:Pasted text #1 ',
 			title: 'Pasted Text Attachment',
 			attachment: [{
 				name: 'Pasted text #1',
@@ -321,8 +307,8 @@ suite('Chat Paste Providers', () => {
 			references: [{
 				idMatchesAttachment: true,
 				name: 'Pasted text #1',
-				text: '#3:text/plain',
-				range: new Range(1, 8, 1, 21),
+				text: '#attachment:Pasted text #1',
+				range: new Range(1, 8, 1, 34),
 			}],
 		});
 	});

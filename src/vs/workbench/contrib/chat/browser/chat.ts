@@ -32,6 +32,7 @@ import { ChatInputPart } from './widget/input/chatInputPart.js';
 import { IChatWidgetContrib } from './widget/chatWidget.js';
 import { ICodeBlockActionContext, ICodeBlockRenderOptions } from './widget/chatContentParts/codeBlockPart.js';
 import { AgentSessionTarget } from './agentSessions/agentSessions.js';
+import type { ChatAttachmentNumbering } from '../../latent/browser/attachmentNumbering.js';
 
 export { ChatOutline } from './chatOutline.js';
 
@@ -255,8 +256,10 @@ export interface IChatListItemRendererOptions {
 }
 
 export interface IChatWidgetViewOptions {
-	/** Lets an embedding host validate and prepare every user submission before sending. */
+	/** Latent: lets an embedding host validate and prepare every user submission before sending. */
 	prepareInput?: (query: string) => Promise<{ query: string; references?: readonly IDynamicVariable[]; onRequestAccepted: () => void }>;
+	/** Latent: creates the Attachment Numbers strategy of this widget's inputs; numbering is off when absent. */
+	createAttachmentNumbering?: () => ChatAttachmentNumbering;
 
 	autoScroll?: boolean | ((mode: ChatModeKind) => boolean);
 	renderInputOnTop?: boolean;
@@ -369,6 +372,7 @@ export function isIChatResourceViewContext(context: IChatWidgetViewContext): con
 export type IChatWidgetViewContext = IChatViewViewContext | IChatResourceViewContext | {};
 
 export interface IChatAcceptInputOptions {
+	/** Latent: host-supplied references of numbered attachments in this submission. */
 	attachmentReferences?: readonly IDynamicVariable[];
 	noCommandDetection?: boolean;
 	isVoiceInput?: boolean;
@@ -390,7 +394,7 @@ export interface IChatAcceptInputOptions {
 	preserveFocus?: boolean;
 	/** Keeps the input box contents and attachments after submitting a programmatic query, and omits them from it. The query itself is sent as-is: prompt slash commands in it are not resolved. */
 	preserveInput?: boolean;
-	/** Retain this user input after acceptance while still sending its attachments. */
+	/** Latent: retain this user input after acceptance while still sending its attachments. */
 	preserveInputAfterSubmit?: boolean;
 	/**
 	 * Called once the request has been handed over to the chat service, i.e. it was either sent
@@ -613,7 +617,7 @@ export interface IChatAttachmentTarget {
  * pipeline does not depend on {@link IChatWidget}.
  */
 export interface IChatPasteTarget extends IChatAttachmentTarget {
-	/** Next context number, when this input supports numbered references. */
+	/** Latent: next Attachment Number, when this input opts into numbering. */
 	readonly nextAttachmentNumber?: number;
 
 	/** Scopes resources created for this input, so they are cleaned up with the session. */

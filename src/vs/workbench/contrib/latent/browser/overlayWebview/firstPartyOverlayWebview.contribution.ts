@@ -1,16 +1,15 @@
-/*---------------------------------------------------------------------------------------------
- *  Copyright (c) Microsoft Corporation. All rights reserved.
- *  Licensed under the MIT License. See License.txt in the project root for license information.
- *--------------------------------------------------------------------------------------------*/
-
-import { getWindow } from '../../../../base/browser/dom.js';
-import { Disposable, DisposableStore } from '../../../../base/common/lifecycle.js';
-import { clamp } from '../../../../base/common/numbers.js';
-import { CommandsRegistry, ICommandService } from '../../../../platform/commands/common/commands.js';
-import { ExtensionIdentifier } from '../../../../platform/extensions/common/extensions.js';
-import { ILayoutService } from '../../../../platform/layout/browser/layoutService.js';
-import { IWorkbenchContribution, registerWorkbenchContribution2, WorkbenchPhase } from '../../../common/contributions.js';
-import { IOverlayWebview, IWebviewService } from './webview.js';
+/* eslint-disable header/header */
+import { getWindow } from '../../../../../base/browser/dom.js';
+import { Disposable, DisposableStore } from '../../../../../base/common/lifecycle.js';
+import { clamp } from '../../../../../base/common/numbers.js';
+import { hasKey } from '../../../../../base/common/types.js';
+import { CommandsRegistry, ICommandService } from '../../../../../platform/commands/common/commands.js';
+import { ExtensionIdentifier } from '../../../../../platform/extensions/common/extensions.js';
+import { ILayoutService } from '../../../../../platform/layout/browser/layoutService.js';
+import { IWorkbenchContribution, registerWorkbenchContribution2, WorkbenchPhase } from '../../../../common/contributions.js';
+import { GroupsOrder, IEditorGroupsService } from '../../../../services/editor/common/editorGroupsService.js';
+import { IOverlayWebview, IWebviewService } from '../../../webview/browser/webview.js';
+import { getEditorGroupContentElement, getEditorGroupElement } from '../editorGroupMount.js';
 
 const ALLOWED_OWNER = 'latentnote.latentnote-code-oss-adapter';
 const MESSAGE_BRIDGE_COMMAND = '_latentnote.composer.overlayMessage';
@@ -68,6 +67,7 @@ class FirstPartyOverlayWebviewContribution extends Disposable implements IWorkbe
 	constructor(
 		@IWebviewService private readonly webviewService: IWebviewService,
 		@ILayoutService private readonly layoutService: ILayoutService,
+		@IEditorGroupsService private readonly editorGroupsService: IEditorGroupsService,
 		@ICommandService private readonly commandService: ICommandService,
 	) {
 		super();
@@ -82,14 +82,14 @@ class FirstPartyOverlayWebviewContribution extends Disposable implements IWorkbe
 	}
 
 	override dispose(): void {
-		for (const entry of this.entries.values()) this.destroyEntry(entry);
+		for (const entry of this.entries.values()) { this.destroyEntry(entry); }
 		this.entries.clear();
 		super.dispose();
 	}
 
 	private show(args: ShowOverlayArgs): void {
 		this.validate(args);
-		if (typeof args.title !== 'string' || typeof args.html !== 'string') throw new Error('Invalid first-party overlay content');
+		if (typeof args.title !== 'string' || typeof args.html !== 'string') { throw new Error('Invalid first-party overlay content'); }
 		let entry = this.entries.get(args.id);
 		if (!entry) {
 			entry = this.createEntry(args);
@@ -110,7 +110,7 @@ class FirstPartyOverlayWebviewContribution extends Disposable implements IWorkbe
 	private hide(args: OverlayCommandArgs): void {
 		this.validate(args);
 		const entry = this.entries.get(args.id);
-		if (!entry) return;
+		if (!entry) { return; }
 		entry.visible = false;
 		entry.webview.release(entry.claimant);
 		entry.anchor?.remove();
@@ -121,7 +121,7 @@ class FirstPartyOverlayWebviewContribution extends Disposable implements IWorkbe
 	private layout(args: LayoutOverlayArgs): void {
 		this.validate(args);
 		const entry = this.entries.get(args.id);
-		if (!entry || !entry.visible) return;
+		if (!entry || !entry.visible) { return; }
 		entry.editorColumn = Number.isInteger(args.editorColumn) ? args.editorColumn : entry.editorColumn;
 		entry.bounds = this.mergeBounds(entry.bounds, args.bounds);
 		this.attach(entry);
@@ -131,7 +131,7 @@ class FirstPartyOverlayWebviewContribution extends Disposable implements IWorkbe
 	private disposeEntry(args: OverlayCommandArgs): void {
 		this.validate(args);
 		const entry = this.entries.get(args.id);
-		if (!entry) return;
+		if (!entry) { return; }
 		this.entries.delete(args.id);
 		this.destroyEntry(entry);
 	}
@@ -185,8 +185,8 @@ class FirstPartyOverlayWebviewContribution extends Disposable implements IWorkbe
 
 	private attach(entry: OverlayEntry): void {
 		const container = this.findEditorContainer(entry.editorColumn);
-		if (!container) throw new Error('No editor content area is available for the overlay');
-		if (entry.container === container && entry.anchor?.isConnected) return;
+		if (!container) { throw new Error('No editor content area is available for the overlay'); }
+		if (entry.container === container && entry.anchor?.isConnected) { return; }
 		entry.anchor?.remove();
 		const anchor = container.ownerDocument.createElement('div');
 		anchor.className = 'first-party-overlay-webview-anchor';
@@ -202,14 +202,14 @@ class FirstPartyOverlayWebviewContribution extends Disposable implements IWorkbe
 	}
 
 	private acceptMessage(entry: OverlayEntry, message: unknown): void {
-		if (!message || typeof message !== 'object' || !('type' in message)) {
+		if (!message || typeof message !== 'object' || !hasKey(message, { type: true })) {
 			void this.bridge(entry, message);
 			return;
 		}
 		const candidate = message as { readonly type: string; readonly deltaX?: unknown; readonly deltaY?: unknown; readonly sectionId?: unknown };
 		if (candidate.type === 'layout.drag') {
-			if (typeof candidate.deltaX === 'number') entry.bounds.x += candidate.deltaX;
-			if (typeof candidate.deltaY === 'number') entry.bounds.y += candidate.deltaY;
+			if (typeof candidate.deltaX === 'number') { entry.bounds.x += candidate.deltaX; }
+			if (typeof candidate.deltaY === 'number') { entry.bounds.y += candidate.deltaY; }
 			entry.bounds.snapEdge = 'none';
 			this.layoutEntry(entry, false);
 			return;
@@ -232,7 +232,7 @@ class FirstPartyOverlayWebviewContribution extends Disposable implements IWorkbe
 
 	private layoutVisibleEntries(): void {
 		for (const entry of this.entries.values()) {
-			if (!entry.visible) continue;
+			if (!entry.visible) { continue; }
 			this.attach(entry);
 			this.layoutEntry(entry, false);
 		}
@@ -241,7 +241,7 @@ class FirstPartyOverlayWebviewContribution extends Disposable implements IWorkbe
 	private layoutEntry(entry: OverlayEntry, snap: boolean): void {
 		const anchor = entry.anchor;
 		const container = entry.container;
-		if (!anchor || !container) return;
+		if (!anchor || !container) { return; }
 		const availableWidth = Math.max(1, container.clientWidth);
 		const availableHeight = Math.max(1, container.clientHeight);
 		const maxWidth = Math.max(320, availableWidth - EDGE_MARGIN * 2);
@@ -250,12 +250,12 @@ class FirstPartyOverlayWebviewContribution extends Disposable implements IWorkbe
 		entry.bounds.height = clamp(entry.bounds.height, Math.min(150, maxHeight), maxHeight);
 		const maxX = Math.max(EDGE_MARGIN, availableWidth - entry.bounds.width - EDGE_MARGIN);
 		const maxY = Math.max(EDGE_MARGIN, availableHeight - entry.bounds.height - EDGE_MARGIN);
-		if (entry.bounds.x < 0) entry.bounds.x = Math.round((availableWidth - entry.bounds.width) / 2);
-		if (entry.bounds.y < 0) entry.bounds.y = maxY;
+		if (entry.bounds.x < 0) { entry.bounds.x = Math.round((availableWidth - entry.bounds.width) / 2); }
+		if (entry.bounds.y < 0) { entry.bounds.y = maxY; }
 		entry.bounds.x = clamp(entry.bounds.x, EDGE_MARGIN, maxX);
 		entry.bounds.y = clamp(entry.bounds.y, EDGE_MARGIN, maxY);
 
-		if (snap) entry.bounds.snapEdge = this.nearestEdge(entry.bounds, maxX, maxY);
+		if (snap) { entry.bounds.snapEdge = this.nearestEdge(entry.bounds, maxX, maxY); }
 		switch (entry.bounds.snapEdge) {
 			case 'top': entry.bounds.y = EDGE_MARGIN; break;
 			case 'right': entry.bounds.x = maxX; break;
@@ -282,16 +282,18 @@ class FirstPartyOverlayWebviewContribution extends Disposable implements IWorkbe
 	}
 
 	private findEditorContainer(editorColumn?: number): HTMLElement | undefined {
-		const root = this.layoutService.activeContainer;
-		const groups = [...root.querySelectorAll<HTMLElement>('.editor-group-container')]
-			.filter(element => element.offsetWidth > 0 && element.offsetHeight > 0);
+		const part = this.editorGroupsService.getPart(this.layoutService.activeContainer);
+		const groups = part.getGroups(GroupsOrder.GRID_APPEARANCE).filter(group => {
+			const element = getEditorGroupElement(group);
+			return !!element && element.offsetWidth > 0 && element.offsetHeight > 0;
+		});
 		const requested = Number.isInteger(editorColumn) && editorColumn! > 0 ? groups[editorColumn! - 1] : undefined;
-		const group = requested ?? groups.find(element => element.classList.contains('active')) ?? groups[0];
-		return group?.querySelector<HTMLElement>(':scope > .editor-container') ?? group;
+		const group = requested ?? groups.find(candidate => candidate.id === part.activeGroup.id) ?? groups[0];
+		return group && getEditorGroupContentElement(group);
 	}
 
 	private mergeBounds(current: OverlayBounds, update: Partial<OverlayBounds> | undefined): OverlayBounds {
-		if (!update) return { ...current };
+		if (!update) { return { ...current }; }
 		return {
 			x: typeof update.x === 'number' && Number.isFinite(update.x) ? update.x : current.x,
 			y: typeof update.y === 'number' && Number.isFinite(update.y) ? update.y : current.y,

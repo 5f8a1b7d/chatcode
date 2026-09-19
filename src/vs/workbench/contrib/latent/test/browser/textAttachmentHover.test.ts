@@ -1,9 +1,9 @@
 /* eslint-disable header/header */
 import assert from 'assert';
-import { MarkdownString } from '../../../../../../base/common/htmlContent.js';
-import { ensureNoDisposablesAreLeakedInTestSuite } from '../../../../../../base/test/common/utils.js';
-import { getTextAttachmentHoverContent } from '../../../browser/attachments/chatAttachmentWidgets.js';
-import { IChatRequestVariableEntry } from '../../../common/attachments/chatVariableEntries.js';
+import { MarkdownString } from '../../../../../base/common/htmlContent.js';
+import { ensureNoDisposablesAreLeakedInTestSuite } from '../../../../../base/test/common/utils.js';
+import { getTextAttachmentHoverContent } from '../../../chat/browser/attachments/chatAttachmentWidgets.js';
+import { IChatRequestVariableEntry } from '../../../chat/common/attachments/chatVariableEntries.js';
 
 suite('Text attachment hover', () => {
 	ensureNoDisposablesAreLeakedInTestSuite();

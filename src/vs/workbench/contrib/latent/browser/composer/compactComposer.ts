@@ -1,21 +1,16 @@
 /* eslint-disable header/header */
 import type * as React from 'react';
-import type { Root } from 'react-dom/client';
-import { importAMDNodeModule } from '../../../../../../amdX.js';
-import { IDisposable, toDisposable } from '../../../../../../base/common/lifecycle.js';
-import { basename } from '../../../../../../base/common/resources.js';
-import { localize } from '../../../../../../nls.js';
-import { formatChatAttachmentName, formatChatAttachmentReference } from '../../../common/attachments/chatVariableEntries.js';
-import type { ComposerPluginIcon, IComposerPluginActivationContext, IComposerPluginSnapshot, IComposerSnapshot } from '../../../common/composer/composerContracts.js';
-import { ComposerModel } from '../../../common/composer/composerModel.js';
+import { IDisposable, toDisposable } from '../../../../../base/common/lifecycle.js';
+import { basename } from '../../../../../base/common/resources.js';
+import { localize } from '../../../../../nls.js';
+import { formatAttachmentNumberName, formatAttachmentNumberReference } from '../../common/attachmentNumbers.js';
+import type { ComposerPluginIcon, IComposerPluginActivationContext, IComposerPluginSnapshot, IComposerSnapshot } from '../../common/composer/composerContracts.js';
+import { ComposerModel } from '../../common/composer/composerModel.js';
+import { loadReactRuntime } from '../reactRuntime.js';
 
 type ClassValue = string | false | null | undefined;
 
 let ReactRuntime: typeof React;
-
-interface IReactDOMRuntime {
-	createRoot(container: Element | DocumentFragment): Root;
-}
 
 /** Tailwind-compatible class composition used by the local shadcn primitives. */
 function cn(...values: ClassValue[]): string {
@@ -118,7 +113,7 @@ function CompactComposer({ model, requestNativeCompletions }: { readonly model: 
 			return;
 		}
 		const start = cursor - (reference?.[1].length ?? 0) - 1;
-		const inserted = `${formatChatAttachmentReference(number, attachment.mimeType)} `;
+		const inserted = `${formatAttachmentNumberReference(number, attachment.mimeType)} `;
 		model.setText(snapshot.draft.text.slice(0, start) + inserted + snapshot.draft.text.slice(cursor));
 		setSuggestionsOpen(false);
 		requestAnimationFrame(() => { textareaRef.current?.focus(); textareaRef.current?.setSelectionRange(start + inserted.length, start + inserted.length); });
@@ -211,7 +206,7 @@ function CompactComposer({ model, requestNativeCompletions }: { readonly model: 
 		...suggestions.map((item, index) => ReactRuntime.createElement('button', {
 			key: item.id, type: 'button', role: 'option', 'aria-selected': index === selectedSuggestion,
 			onMouseDown: event => event.preventDefault(), onClick: () => chooseReference(item.number!),
-		}, formatChatAttachmentName(item.number!, item.kind === 'context' ? item.label : basename(item.resource)))),
+		}, formatAttachmentNumberName(item.number!, item.kind === 'context' ? item.label : basename(item.resource)))),
 		requestNativeCompletions ? ReactRuntime.createElement('button', { type: 'button', onClick: () => { setSuggestionsOpen(false); requestNativeCompletions(); } }, localize('floatingComposer.moreContext', "More Context…")) : null,
 	) : null,
 	ReactRuntime.createElement('div', { className: 'flex items-center justify-between gap-2' },
@@ -241,9 +236,9 @@ function CompactComposer({ model, requestNativeCompletions }: { readonly model: 
 
 /** Mounts the React adapter and returns a VS Code lifecycle handle. */
 export async function renderCompactComposer(container: HTMLElement, model: ComposerModel<ICompactComposerPluginActivationContext>, requestNativeCompletions?: () => void): Promise<IDisposable> {
-	ReactRuntime = await importAMDNodeModule<typeof React>('react', 'umd/react.production.min.js');
-	const reactDOM = await importAMDNodeModule<IReactDOMRuntime>('react-dom', 'umd/react-dom.production.min.js', undefined, { react: ReactRuntime });
-	const root = reactDOM.createRoot(container);
+	const runtime = await loadReactRuntime();
+	ReactRuntime = runtime.React;
+	const root = runtime.createRoot(container);
 	root.render(ReactRuntime.createElement(CompactComposer, { model, requestNativeCompletions }));
 	return toDisposable(() => root.unmount());
 }

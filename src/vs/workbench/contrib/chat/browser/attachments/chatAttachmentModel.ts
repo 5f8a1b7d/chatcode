@@ -7,9 +7,8 @@ import { URI } from '../../../../../base/common/uri.js';
 import { Emitter } from '../../../../../base/common/event.js';
 import { basename } from '../../../../../base/common/resources.js';
 import { IRange } from '../../../../../editor/common/core/range.js';
-import { isLocation } from '../../../../../editor/common/languages.js';
 import { combinedDisposable, Disposable, DisposableMap, IDisposable } from '../../../../../base/common/lifecycle.js';
-import { getChatAttachmentMimeType, IChatRequestFileEntry, IChatRequestVariableEntry, isAgentHostCompletionVariableEntry, isPromptFileVariableEntry } from '../../common/attachments/chatVariableEntries.js';
+import { IChatRequestFileEntry, IChatRequestVariableEntry, isPromptFileVariableEntry } from '../../common/attachments/chatVariableEntries.js';
 import { FileChangeType, IFileService } from '../../../../../platform/files/common/files.js';
 import { ISharedWebContentExtractorService } from '../../../../../platform/webContentExtractor/common/webContentExtractor.js';
 import { Schemas } from '../../../../../base/common/network.js';
@@ -17,6 +16,7 @@ import { IChatAttachmentResolveService } from './chatAttachmentResolveService.js
 import { CancellationToken } from '../../../../../base/common/cancellation.js';
 import { equals } from '../../../../../base/common/objects.js';
 import { Iterable } from '../../../../../base/common/iterator.js';
+import type { ChatAttachmentNumbering } from '../../../latent/browser/attachmentNumbering.js';
 
 export interface IChatAttachmentChangeEvent {
 	readonly deleted: readonly string[];
@@ -27,26 +27,8 @@ export interface IChatAttachmentChangeEvent {
 export class ChatAttachmentModel extends Disposable {
 
 	private readonly _attachments = new Map<string, IChatRequestVariableEntry>();
-	private _nextAttachmentNumber = 1;
-	private readonly implicitContextNumbers = new Map<string, number>();
-
-	get nextAttachmentNumber(): number {
-		return this._nextAttachmentNumber;
-	}
-
-	/** Shares the context counter with suggestions that are not explicit attachments. */
-	getNumberedImplicitContext(entry: IChatRequestVariableEntry): IChatRequestVariableEntry {
-		const resource = IChatRequestVariableEntry.toUri(entry);
-		const range = isLocation(entry.value) ? entry.value.range : undefined;
-		const id = resource ? `${entry.id}:${resource.toString()}:${range ? `${range.startLineNumber},${range.startColumn}-${range.endLineNumber},${range.endColumn}` : ''}` : entry.id;
-		let number = this.implicitContextNumbers.get(entry.id);
-		if (number === undefined || this.attachments.some(attachment => attachment.attachmentNumber === number && attachment.id !== id)) {
-			number = this._nextAttachmentNumber++;
-			this.implicitContextNumbers.set(entry.id, number);
-		}
-		return { ...entry, id, name: resource && entry.kind === 'file' ? basename(resource) : entry.name, attachmentNumber: number, attachmentMimeType: getChatAttachmentMimeType(entry) };
-	}
-
+	/** Latent: Attachment Numbers, set only by inputs that opt in (see FORK.md). */
+	numbering: ChatAttachmentNumbering | undefined;
 	private readonly _fileWatchers = this._register(new DisposableMap<IChatRequestFileEntry['id'], IDisposable>());
 
 	private _onDidChange = this._register(new Emitter<IChatAttachmentChangeEvent>());
@@ -153,14 +135,9 @@ export class ChatAttachmentModel extends Disposable {
 			}
 		}
 
-		for (const entry of upsert) {
-			const oldItem = this._attachments.get(entry.id);
-			let item = entry;
-			if (!isAgentHostCompletionVariableEntry(entry)) {
-				const attachmentNumber = entry.attachmentNumber ?? oldItem?.attachmentNumber ?? this._nextAttachmentNumber;
-				this._nextAttachmentNumber = Math.max(this._nextAttachmentNumber, attachmentNumber + 1);
-				item = { ...entry, attachmentNumber, attachmentMimeType: getChatAttachmentMimeType(entry) };
-			}
+		for (let item of upsert) {
+			const oldItem = this._attachments.get(item.id);
+			item = this.numbering?.numberAttachment(item, oldItem) ?? item; // Latent
 			if (!oldItem) {
 				this._attachments.set(item.id, item);
 				added.push(item);

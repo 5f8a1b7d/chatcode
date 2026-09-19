@@ -2516,6 +2516,7 @@ export class ChatWidget extends Disposable implements IChatWidget {
 			sessionTypePickerDelegate: this.viewOptions.sessionTypePickerDelegate,
 			workspacePickerDelegate: this.viewOptions.workspacePickerDelegate,
 			isSessionsWindow: this.viewOptions.isSessionsWindow,
+			createAttachmentNumbering: this.viewOptions.createAttachmentNumbering, // Latent
 		};
 
 		if (this.viewModel?.editing) {
@@ -3077,14 +3078,19 @@ export class ChatWidget extends Disposable implements IChatWidget {
 			await stopDictationForEditor(this.inputEditor);
 		}
 
-		if (this.viewOptions.prepareInput && !options?.preserveInput) {
+		if (this.viewOptions.prepareInput && !options?.preserveInput) { // Latent
 			const prepared = await this.viewOptions.prepareInput(query ?? this.inputEditor.getValue());
 			query = prepared.query;
 			const accepted = options?.onRequestAccepted;
-			options = { ...options, attachmentReferences: prepared.references, preserveInputAfterSubmit: true, onRequestAccepted: () => {
-				prepared.onRequestAccepted();
-				accepted?.();
-			} };
+			options = {
+				...options,
+				attachmentReferences: prepared.references,
+				preserveInputAfterSubmit: true,
+				onRequestAccepted: () => {
+					prepared.onRequestAccepted();
+					accepted?.();
+				},
+			};
 		}
 		if (this.viewModel) {
 			markChat(this.viewModel.sessionResource, ChatPerfMark.RequestStart);

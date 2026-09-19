@@ -1,7 +1,8 @@
 /* eslint-disable header/header */
 import { Event } from '../../../../base/common/event.js';
 import { createDecorator } from '../../../../platform/instantiation/common/instantiation.js';
-import { getChatAttachmentMimeType, IChatRequestVariableEntry } from '../../chat/common/attachments/chatVariableEntries.js';
+import { IChatRequestVariableEntry } from '../../chat/common/attachments/chatVariableEntries.js';
+import { formatAttachmentNumberPrompt, getAttachmentNumberMimeType } from './attachmentNumbers.js';
 import { ITabKey } from './tabKey.js';
 import { Range } from '../../../../editor/common/core/range.js';
 import { IDynamicVariable, toAttachedContextDynamicVariable } from '../../chat/common/attachments/chatVariables.js';
@@ -89,7 +90,7 @@ export function attachmentLabel(entry: IChatRequestVariableEntry): string {
 
 /** MIME used in the visible `#<number>:<MIME>` token for an attachment. */
 export function attachmentMimeType(entry: IChatRequestVariableEntry): string {
-	return getChatAttachmentMimeType(entry);
+	return getAttachmentNumberMimeType(entry);
 }
 
 /** Adds the display metadata consumed by native attachment pills and completions. */
@@ -111,7 +112,7 @@ export function createDraftReferences(text: string, attachments: readonly IDraft
 		const line = prefix.split('\n').length;
 		const column = reference.startOffset - prefix.lastIndexOf('\n');
 		const variable = toAttachedContextDynamicVariable(attachment.entry, new Range(line, column, line, column + reference.endOffset - reference.startOffset));
-		references.push({ ...variable, promptText: `[#${reference.number}: ${attachmentLabel(attachment.entry)}]`, _meta: {
+		references.push({ ...variable, promptText: formatAttachmentNumberPrompt(reference.number, attachmentLabel(attachment.entry)), _meta: {
 			...attachment.entry._meta,
 			attachmentPreview: typeof attachment.entry.value === 'string' ? attachment.entry.value : attachmentLabel(attachment.entry),
 		} });
@@ -139,7 +140,7 @@ export function rewriteReferencesForModel(text: string, attachments: readonly ID
 	const byNumber = new Map(attachments.filter(attachment => attachment.removedAt === undefined).map(attachment => [attachment.number, attachment]));
 	return text.replace(referencePattern, (token, _number, _mimeType, _offset, _input, groups: { number: string }) => {
 		const attachment = byNumber.get(Number(groups.number));
-		return attachment ? `[#${attachment.number}: ${attachmentLabel(attachment.entry)}]` : token;
+		return attachment ? formatAttachmentNumberPrompt(attachment.number, attachmentLabel(attachment.entry)) : token;
 	});
 }
 

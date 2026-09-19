@@ -1,7 +1,7 @@
 /* eslint-disable header/header */
 import type { Event } from '../../../../../base/common/event.js';
 import type { URI } from '../../../../../base/common/uri.js';
-import type { IChatAgentAttachmentCapabilities } from '../participants/chatAgents.js';
+import type { IChatAgentAttachmentCapabilities } from '../../../chat/common/participants/chatAgents.js';
 
 /** Semantic icon name interpreted by composer render adapters. */
 export type ComposerPluginIcon = string;

@@ -13,6 +13,7 @@ import { IChatModel } from '../model/chatModel.js';
 import { IChatContentReference, IChatProgressMessage } from '../chatService/chatService.js';
 import { IDiagnosticVariableEntryFilterData, StringChatContextValue, type IChatRequestVariableEntry } from './chatVariableEntries.js';
 import { ToolAndToolSetEnablementMap } from '../tools/languageModelToolsService.js';
+import { formatAttachmentNumberPrompt } from '../../../latent/common/attachmentNumbers.js';
 
 export interface IChatVariableData {
 	id: string;
@@ -81,7 +82,7 @@ export function toAttachedContextDynamicVariable(entry: IChatRequestVariableEntr
 		isAttachmentReference: true,
 		range,
 		data: undefined,
-		promptText: entry.attachmentNumber === undefined ? undefined : `[#${entry.attachmentNumber}: ${entry.name}]`,
+		promptText: entry.attachmentNumber === undefined ? undefined : formatAttachmentNumberPrompt(entry.attachmentNumber, entry.name), // Latent
 		_meta: entry.attachmentNumber === undefined ? undefined : {
 			...entry._meta,
 			attachmentPreview: typeof entry.value === 'string' ? entry.value : entry.name,

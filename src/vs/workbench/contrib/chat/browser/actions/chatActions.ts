@@ -36,6 +36,7 @@ import { IOpenerService } from '../../../../../platform/opener/common/opener.js'
 import product from '../../../../../platform/product/common/product.js';
 import { GitHubPaths, IDefaultAccountService } from '../../../../../platform/defaultAccount/common/defaultAccount.js';
 import { ITelemetryService } from '../../../../../platform/telemetry/common/telemetry.js';
+import { ActiveEditorContext } from '../../../../common/contextkeys.js';
 import { IViewDescriptorService, ViewContainerLocation } from '../../../../common/views.js';
 import { ChatEntitlement, IChatEntitlementService } from '../../../../services/chat/common/chatEntitlementService.js';
 import { ACTIVE_GROUP, AUX_WINDOW_GROUP, SIDE_GROUP } from '../../../../services/editor/common/editorService.js';
@@ -64,7 +65,7 @@ import { ILanguageModelToolsConfirmationService } from '../../common/tools/langu
 import { ILanguageModelToolsService, IToolData, IToolSet, isToolSet, ToolAndToolSetEnablementMap } from '../../common/tools/languageModelToolsService.js';
 import { ChatViewId, IChatWidget, IChatWidgetService, isIChatViewViewContext } from '../chat.js';
 import { IChatEditorOptions } from '../widgetHosts/editor/chatEditor.js';
-import { showClearEditingSessionConfirmation } from '../widgetHosts/editor/chatEditorInput.js';
+import { ChatEditorInput, showClearEditingSessionConfirmation } from '../widgetHosts/editor/chatEditorInput.js';
 import { convertBufferToScreenshotVariable } from '../attachments/chatScreenshotContext.js';
 import { getChatSessionType, getNewChatSessionResource } from '../../common/model/chatUri.js';
 import { localChatSessionType } from '../../common/chatSessionsService.js';
@@ -689,6 +690,7 @@ export function registerChatActions() {
 				}, {
 					id: MenuId.EditorTitle,
 					group: 'navigation',
+					when: ContextKeyExpr.and(ActiveEditorContext.isEqualTo(ChatEditorInput.EditorID), ChatContextKeys.newChatButtonExperimentIcon.notEqualsTo('copilot'), ChatContextKeys.newChatButtonExperimentIcon.notEqualsTo('new-session'), ChatContextKeys.newChatButtonExperimentIcon.notEqualsTo('comment')),
 					order: 1
 				}],
 			});
@@ -710,6 +712,12 @@ export function registerChatActions() {
 				f1: false,
 				category: CHAT_CATEGORY,
 				precondition: ChatContextKeys.enabled,
+				menu: [{
+					id: MenuId.EditorTitle,
+					group: 'navigation',
+					when: ContextKeyExpr.and(ActiveEditorContext.isEqualTo(ChatEditorInput.EditorID), ChatContextKeys.newChatButtonExperimentIcon.isEqualTo('copilot')),
+					order: 1
+				}],
 			});
 		}
 
@@ -729,6 +737,12 @@ export function registerChatActions() {
 				f1: false,
 				category: CHAT_CATEGORY,
 				precondition: ChatContextKeys.enabled,
+				menu: [{
+					id: MenuId.EditorTitle,
+					group: 'navigation',
+					when: ContextKeyExpr.and(ActiveEditorContext.isEqualTo(ChatEditorInput.EditorID), ChatContextKeys.newChatButtonExperimentIcon.isEqualTo('new-session')),
+					order: 1
+				}],
 			});
 		}
 
@@ -748,6 +762,12 @@ export function registerChatActions() {
 				f1: false,
 				category: CHAT_CATEGORY,
 				precondition: ChatContextKeys.enabled,
+				menu: [{
+					id: MenuId.EditorTitle,
+					group: 'navigation',
+					when: ContextKeyExpr.and(ActiveEditorContext.isEqualTo(ChatEditorInput.EditorID), ChatContextKeys.newChatButtonExperimentIcon.isEqualTo('comment')),
+					order: 1
+				}],
 			});
 		}
 
