@@ -37,7 +37,9 @@ export class LatentVoiceSession extends Disposable {
 	private stream: MediaStream | undefined;
 	private processor: ScriptProcessorNode | undefined;
 	private playhead = 0;
+	private readonly playback = new Set<AudioBufferSourceNode>();
 	private assistantText = '';
+	private stopping: Promise<void> | undefined;
 	private _state: VoiceSessionState = 'connecting';
 
 	get state(): VoiceSessionState {
@@ -70,12 +72,18 @@ export class LatentVoiceSession extends Disposable {
 						turn_detection: { type: 'server_vad', create_response: true, interrupt_response: true },
 					},
 				});
-				this.setState('listening');
-				resolve();
+
 			});
 			socket.addEventListener('error', () => { this.setState('error'); reject(new Error('Realtime voice connection failed.')); });
-			socket.addEventListener('close', () => this.setState('closed'));
-			socket.addEventListener('message', event => this.receive(String(event.data)));
+			socket.addEventListener('close', () => { this.setState('closed'); reject(new Error('Voice connection closed before it was ready.')); });
+			socket.addEventListener('message', event => {
+				const raw = String(event.data);
+				let type: string | undefined;
+				try { type = JSON.parse(raw).type; } catch { return; }
+				if (type === 'session.updated') { this.setState('listening'); resolve(); }
+				else if (type === 'error') { reject(new Error('Voice provider could not start. Check its endpoint, model, credentials, and local codec requirements.')); }
+				this.receive(raw);
+			});
 		});
 		this.processor.onaudioprocess = event => {
 			if (this.socket?.readyState !== 1) {
@@ -98,13 +106,16 @@ export class LatentVoiceSession extends Disposable {
 	}
 
 	private receive(raw: string): void {
-		let event: { type?: string; delta?: string; transcript?: string; error?: { message?: string } };
+		let event: { type?: string; delta?: string; transcript?: string; role?: 'user' | 'assistant'; text?: string; final?: boolean; error?: { message?: string } };
 		try {
 			event = JSON.parse(raw);
 		} catch {
 			return;
 		}
 		switch (event.type) {
+			case 'latent.transcript':
+				if (event.role && event.text !== undefined) { this._onDidTranscript.fire({ role: event.role, text: event.text, final: event.final === true }); }
+				break;
 			case 'response.audio.delta':
 				if (event.delta) {
 					this.play(fromBase64(event.delta));
@@ -139,6 +150,8 @@ export class LatentVoiceSession extends Disposable {
 	interrupt(): void {
 		this.send({ type: 'response.cancel' });
 		this.send({ type: 'output_audio_buffer.clear' });
+		for (const node of this.playback) { node.stop(); node.disconnect(); }
+		this.playback.clear();
 		this.playhead = 0;
 		if (this.context) {
 			this.playhead = this.context.currentTime;
@@ -156,6 +169,8 @@ export class LatentVoiceSession extends Disposable {
 			channel[i] = samples[i] / 0x8000;
 		}
 		const node = this.context.createBufferSource();
+		this.playback.add(node);
+		node.onended = () => { this.playback.delete(node); node.disconnect(); if (!this.playback.size) { this.setState('listening'); } };
 		node.buffer = buffer;
 		node.connect(this.context.destination);
 		const startAt = Math.max(this.context.currentTime, this.playhead);
@@ -170,8 +185,34 @@ export class LatentVoiceSession extends Disposable {
 		}
 	}
 
+	stop(): Promise<void> {
+		return this.stopping ??= this.finish();
+	}
+
+	private async finish(): Promise<void> {
+		if (this.processor) { this.processor.onaudioprocess = null; }
+		this.stream?.getTracks().forEach(track => track.stop());
+		const socket = this.socket;
+		if (socket?.readyState === WebSocket.OPEN) {
+			await new Promise<void>(resolve => {
+				const complete = () => { clearTimeout(timeout); socket.removeEventListener('message', receive); socket.removeEventListener('close', complete); resolve(); };
+				const receive = (event: MessageEvent) => {
+					try { if (JSON.parse(event.data).type === 'latent.finished') { complete(); } } catch { /* handled by the main receiver */ }
+				};
+				const timeout = setTimeout(complete, 10_000);
+				socket.addEventListener('message', receive);
+				socket.addEventListener('close', complete);
+				socket.send(JSON.stringify({ type: 'latent.finish' }));
+			});
+		}
+		this.dispose();
+	}
+
 	override dispose(): void {
+		if (this.processor) { this.processor.onaudioprocess = null; }
 		this.processor?.disconnect();
+		for (const node of this.playback) { node.onended = null; node.stop(); node.disconnect(); }
+		this.playback.clear();
 		this.stream?.getTracks().forEach(track => track.stop());
 		void this.context?.close();
 		try {

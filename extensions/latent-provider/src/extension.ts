@@ -18,6 +18,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<ILaten
 	capabilityService = new CapabilityService(manager);
 	context.subscriptions.push(manager, capabilityService, new CatalogLanguageModelProvider(manager));
 
+	// Derivative builds may hide local model configuration (`latentPrivate.hideProviderConfiguration`).
+	const derivative = await vscode.commands.executeCommand<{ hideProviderConfiguration?: boolean } | undefined>('latent.product.derivativeConfiguration').then(value => value, () => undefined);
+	manager.setConfigurationHidden(derivative?.hideProviderConfiguration === true);
+
 	for (const command of ['latent.provider.manage', 'latentnote.manageProviders']) {
 		context.subscriptions.push(vscode.commands.registerCommand(command, () => manager.open()));
 	}
@@ -36,7 +40,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<ILaten
 		}
 		try {
 			const binding = await capabilityService!.resolve({ capability, preferredProviderId });
-			const secret = await manager.getStore().getSecret(binding.secretRef);
+			const secret = await manager.getSecret(binding.secretRef);
 			return { providerId: binding.providerId, modelId: binding.modelId, protocol: binding.protocol, baseUrl: binding.baseUrl, apiKey: secret };
 		} catch {
 			return undefined;
@@ -54,7 +58,6 @@ function isCapability(value: unknown): value is ProviderCapability {
 }
 
 function toMatrix(matrix: Record<ProviderCapability, ICapabilityBinding[]> | undefined, manager: ProviderManager): Promise<CapabilityMatrix> {
-	const store = manager.getStore();
 	return (async () => {
 		const result: CapabilityMatrix = {};
 		for (const capability of providerCapabilities) {
@@ -68,7 +71,7 @@ function toMatrix(matrix: Record<ProviderCapability, ICapabilityBinding[]> | und
 				source: entry.source,
 				sourceId: entry.sourceId,
 				requiresApiKey: entry.requiresApiKey,
-				hasSecret: await store.hasSecret(entry.secretRef),
+				hasSecret: await manager.hasSecret(entry.secretRef),
 			})));
 		}
 		return result;

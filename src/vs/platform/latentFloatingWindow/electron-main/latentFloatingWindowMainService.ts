@@ -39,6 +39,7 @@ export class LatentFloatingWindowMainService extends Disposable implements ILate
 		@ILogService private readonly logService: ILogService,
 	) {
 		super();
+		this._register(lifecycleMainService.onBeforeShutdown(() => { this.shuttingDown = true; }));
 		this._register(lifecycleMainService.onWillShutdown(() => {
 			this.shuttingDown = true;
 			this.destroy();
@@ -74,8 +75,6 @@ export class LatentFloatingWindowMainService extends Disposable implements ILate
 			height: FLOATING_WINDOW_HEIGHT,
 			minWidth: FLOATING_WINDOW_WIDTH,
 			maxWidth: FLOATING_WINDOW_WIDTH,
-			minHeight: FLOATING_WINDOW_HEIGHT,
-			maxHeight: FLOATING_WINDOW_HEIGHT,
 			...(saved ? this.clampToDisplay(saved) : {}),
 			show: false,
 			frame: false,
@@ -165,6 +164,8 @@ export class LatentFloatingWindowMainService extends Disposable implements ILate
 		if (!this.ready || !this.window || this.window.isDestroyed()) {
 			return;
 		}
+		const height = this.state.transcript?.some(turn => turn.text.length > 0) ? 116 : FLOATING_WINDOW_HEIGHT;
+		this.window.setSize(FLOATING_WINDOW_WIDTH, height);
 		try {
 			await this.window.webContents.executeJavaScript(`window.renderFloatingState(${JSON.stringify(this.state).replaceAll('<', '\\u003c')})`);
 		} catch (error) {
@@ -210,7 +211,7 @@ body{display:flex;flex-direction:column;font:13px -apple-system,BlinkMacSystemFo
 .body{display:flex;flex-direction:column;gap:6px;padding:0 10px 8px}
 form{display:flex;gap:6px}input{flex:1;min-width:0;padding:6px 8px;border-radius:6px;border:1px solid rgba(255,255,255,.14);background:#2a2a2a;color:inherit;font:inherit}
 button{-webkit-app-region:no-drag;padding:6px 10px;border-radius:6px;border:0;background:#3f3f46;color:#eee;font:inherit;cursor:pointer}button.primary{background:#0e639c}button.active{background:#4caf50;color:#111}
-.transcript{height:34px;overflow:auto;font-size:12px;color:#bdbdbd;white-space:nowrap;text-overflow:ellipsis}
+.transcript:empty{display:none}.transcript{height:30px;overflow:auto;font-size:12px;color:#bdbdbd;white-space:nowrap;text-overflow:ellipsis}
 @media(prefers-color-scheme:light){body{background:#fafafa;color:#222;border-color:rgba(0,0,0,.13)}input{background:#fff;border-color:rgba(0,0,0,.15)}button{background:#e8e8e8;color:#222}button.primary{background:#0e639c;color:#fff}.head,.transcript{color:#666}}
 </style></head><body>
 <div class="head"><span id="dot" class="dot"></span><span id="title" class="title"></span><span id="status"></span></div>

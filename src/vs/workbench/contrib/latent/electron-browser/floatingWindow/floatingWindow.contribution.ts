@@ -1,4 +1,5 @@
 /* eslint-disable header/header */
+import { IChatService } from '../../../chat/common/chatService/chatService.js';
 import { mainWindow } from '../../../../../base/browser/window.js';
 import { Disposable, MutableDisposable } from '../../../../../base/common/lifecycle.js';
 import { platformLocale } from '../../../../../base/common/platform.js';
@@ -28,13 +29,14 @@ class FloatingWindowContribution extends Disposable implements IWorkbenchContrib
 	private readonly voice = this._register(new MutableDisposable<LatentVoiceSession>());
 	private threadId: string | undefined;
 	private widget: IChatWidget | undefined;
-	private transcript: { role: 'user' | 'assistant'; text: string }[] = [];
+	private transcript: { role: 'user' | 'assistant'; text: string; final: boolean }[] = [];
 
 	constructor(
 		@ILatentFloatingWindowService private readonly floatingWindowService: ILatentFloatingWindowService,
 		@INativeHostService private readonly nativeHostService: INativeHostService,
 		@IConfigurationService private readonly configurationService: IConfigurationService,
 		@ISideChatOpener private readonly sideChatOpener: ISideChatOpener,
+		@IChatService private readonly chatService: IChatService,
 		@IThreadService private readonly threadService: IThreadService,
 		@ICommandService private readonly commandService: ICommandService,
 		@INotificationService private readonly notificationService: INotificationService,
@@ -102,7 +104,7 @@ class FloatingWindowContribution extends Disposable implements IWorkbenchContrib
 	/** Toggles full-duplex voice against the `realtimeVoice` binding (P2-FR-063). */
 	private async toggleVoice(): Promise<void> {
 		if (this.voice.value) {
-			this.stopVoice();
+			await this.stopVoice();
 			return;
 		}
 		let connection: IVoiceConnection | undefined;
@@ -140,27 +142,43 @@ class FloatingWindowContribution extends Disposable implements IWorkbenchContrib
 
 	private onTranscript(transcript: IVoiceTranscript): void {
 		const last = this.transcript[this.transcript.length - 1];
-		if (last && last.role === transcript.role && !transcript.final) {
+		if (last && last.role === transcript.role && !last.final) {
 			last.text = transcript.text;
-		} else if (transcript.final || !last || last.role !== transcript.role) {
-			this.transcript.push({ role: transcript.role, text: transcript.text });
+			last.final = transcript.final;
+		} else {
+			this.transcript.push({ ...transcript });
 		}
 		void this.publishState();
 	}
 
-	private stopVoice(): void {
+	private async stopVoice(): Promise<void> {
+		await this.voice.value?.stop();
 		this.voice.clear();
 		this.finishVoice();
 	}
 
-	/** Places the spoken exchange into the Thread's composer so it becomes part of the Thread when sent. */
+	/** Save the spoken exchange as completed turns without sending it to a text model. */
 	private finishVoice(): void {
-		const lines = this.transcript.filter(item => item.text.trim()).map(item => `${item.role === 'user' ? localize('latentFloatingWindow.you', "You") : localize('latentFloatingWindow.assistant', "Assistant")}: ${item.text.trim()}`);
-		if (lines.length && this.widget) {
-			this.widget.inputPart.setValue(localize('latentFloatingWindow.transcriptHeader', "Voice transcript:\n{0}", lines.join('\n')), false);
+		const resource = this.widget?.viewModel?.sessionResource;
+		if (resource) {
+			let user: string[] = [];
+			let assistant: string[] = [];
+			const flush = () => {
+				if (user.length || assistant.length) {
+					this.chatService.addCompleteRequest(resource, user.join('\n') || localize('latentFloatingWindow.voiceTurn', "Voice conversation"), undefined, 0, { message: assistant.join('\n') });
+					user = []; assistant = [];
+				}
+			};
+			for (const turn of this.transcript.filter(item => item.text.trim())) {
+				if (turn.role === 'user') { if (assistant.length) { flush(); } user.push(turn.text); }
+				else { assistant.push(turn.text); }
+			}
+			flush();
 		}
+		this.transcript = [];
 		void this.publishState({ voice: 'off' });
 	}
+
 }
 
 registerWorkbenchContribution2(FloatingWindowContribution.ID, FloatingWindowContribution, WorkbenchPhase.Eventually);

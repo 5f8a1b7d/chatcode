@@ -1,10 +1,13 @@
 import * as vscode from 'vscode';
-import type { IAsrOptions, ICapabilityBinding, ICapabilityRequest, IImageUnderstandOptions, ILatentProviderApi, IRealtimeConnection, IRealtimeSessionOptions, IRealtimeVoiceSession, ITextGenerateOptions, ITtsOptions, ProviderCapability } from '../api';
+import type { IAsrOptions, ICapabilityBinding, ICapabilityRequest, IExternalProvider, IImageUnderstandOptions, ILatentProviderApi, IRealtimeConnection, IRealtimeSessionOptions, IRealtimeVoiceSession, ITextGenerateOptions, ITtsOptions, ProviderCapability } from '../api';
 import { CapabilityUnavailableError, providerCapabilities } from '../api';
 import { ProviderManager } from '../manager/manager';
 import { synthesizeSpeech, transcribeAudio } from './audio';
 import { chooseBinding, computeBindings } from './bindings';
-import { realtimeConnection, RealtimeVoiceSession } from './realtime';
+import { createRealtimeBridge } from './realtimeBridge';
+import { isMoshi } from './realtimeWire';
+import { TranscribedVoiceSession } from './realtimeTranscription';
+import { RealtimeVoiceSession } from './realtime';
 import { requestText } from './text';
 
 /** Implements the unified capability-selection model (spec 02 §2.5) on top of the provider store. */
@@ -13,6 +16,7 @@ export class CapabilityService implements ILatentProviderApi, vscode.Disposable 
 	private readonly changeEmitter = new vscode.EventEmitter<void>();
 	readonly onDidChangeBindings = this.changeEmitter.event;
 	private readonly disposables: vscode.Disposable[] = [];
+	private readonly voiceBridges = new Set<vscode.Disposable>();
 	private secretPresence = new Map<string, boolean>();
 
 	constructor(private readonly manager: ProviderManager) {
@@ -30,7 +34,7 @@ export class CapabilityService implements ILatentProviderApi, vscode.Disposable 
 			return result;
 		}
 		const store = this.manager.getStore();
-		const active = store.listActiveBindings(catalog);
+		const active = this.manager.listActiveBindings();
 		await this.refreshSecretPresence(active.map(binding => binding.secretRef));
 		const computed = computeBindings({ catalog, active, hasSecret: ref => this.secretPresence.get(ref) === true, defaults: store.getCapabilityDefaults() });
 		for (const [capability, list] of computed) {
@@ -40,10 +44,9 @@ export class CapabilityService implements ILatentProviderApi, vscode.Disposable 
 	}
 
 	private async refreshSecretPresence(refs: readonly string[]): Promise<void> {
-		const store = this.manager.getStore();
 		await Promise.all([...new Set(refs)].map(async ref => {
 			if (!this.secretPresence.has(ref)) {
-				this.secretPresence.set(ref, await store.hasSecret(ref));
+				this.secretPresence.set(ref, await this.manager.hasSecret(ref));
 			}
 		}));
 	}
@@ -62,6 +65,14 @@ export class CapabilityService implements ILatentProviderApi, vscode.Disposable 
 		this.changeEmitter.fire();
 	}
 
+	get configurationHidden(): boolean {
+		return this.manager.isConfigurationHidden();
+	}
+
+	registerExternalProvider(provider: IExternalProvider): vscode.Disposable {
+		return this.manager.registerExternalProvider(provider);
+	}
+
 	async guide(capability: ProviderCapability, caller: string): Promise<void> {
 		const labels: Record<ProviderCapability, string> = {
 			text: vscode.l10n.t('text generation'),
@@ -70,6 +81,10 @@ export class CapabilityService implements ILatentProviderApi, vscode.Disposable 
 			tts: vscode.l10n.t('speech synthesis'),
 			realtimeVoice: vscode.l10n.t('realtime voice'),
 		};
+		if (this.manager.isConfigurationHidden()) {
+			await vscode.window.showWarningMessage(vscode.l10n.t('{0} needs {1}, but the server model list is unavailable. Sign in again or retry later.', caller, labels[capability]));
+			return;
+		}
 		const configure = vscode.l10n.t('Configure provider…');
 		const learn = vscode.l10n.t('Which providers support this?');
 		const choice = await vscode.window.showWarningMessage(
@@ -152,20 +167,29 @@ export class CapabilityService implements ILatentProviderApi, vscode.Disposable 
 
 	async openRealtimeSession(binding: ICapabilityBinding, options: IRealtimeSessionOptions): Promise<IRealtimeVoiceSession> {
 		const secret = await this.secretFor(binding);
-		const session = new RealtimeVoiceSession(binding, secret, options);
+		const asr = isMoshi(binding.protocol) ? await this.resolve({ capability: 'asr' }) : undefined;
+		const asrSecret = asr ? await this.secretFor(asr) : undefined;
+		const session = new RealtimeVoiceSession(binding, secret, { ...this.manager.getStore().getProvider('realtime', binding.providerId).fields, ...Object.fromEntries(Object.entries(options).filter(([, value]) => value !== undefined)) });
 		await session.whenReady();
-		return session;
+		return asr ? new TranscribedVoiceSession(session, (audio, signal) => transcribeAudio(asr, asrSecret, audio, 'audio/wav', options.language, signal)) : session;
 	}
 
 	async resolveRealtimeConnection(binding: ICapabilityBinding): Promise<IRealtimeConnection> {
-		return realtimeConnection(binding, await this.secretFor(binding));
+		await this.secretFor(binding);
+		if (isMoshi(binding.protocol)) {
+			try { await this.resolve({ capability: 'asr' }); } catch (error) { await this.guide('asr', 'Local voice input transcription'); throw error; }
+		}
+		const bridge = await createRealtimeBridge(binding.modelId, binding.providerId, options => this.openRealtimeSession(binding, options));
+		this.voiceBridges.add(bridge);
+		void bridge.closed.then(() => this.voiceBridges.delete(bridge));
+		return bridge.connection;
 	}
 
 	private async secretFor(binding: ICapabilityBinding): Promise<string | undefined> {
 		if (!this.manager.isEnabled()) {
 			throw new CapabilityUnavailableError(binding.capability, 'disabled', []);
 		}
-		const secret = await this.manager.getStore().getSecret(binding.secretRef);
+		const secret = await this.manager.getSecret(binding.secretRef);
 		if (binding.requiresApiKey && !secret) {
 			throw new CapabilityUnavailableError(binding.capability, 'missingCredential', [binding.providerId]);
 		}
@@ -173,9 +197,10 @@ export class CapabilityService implements ILatentProviderApi, vscode.Disposable 
 	}
 
 	dispose(): void {
+		for (const bridge of this.voiceBridges) { bridge.dispose(); }
+		this.voiceBridges.clear();
 		for (const disposable of this.disposables) {
 			disposable.dispose();
 		}
 	}
 }
-

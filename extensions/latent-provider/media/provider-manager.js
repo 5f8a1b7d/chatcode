@@ -230,6 +230,11 @@
 		const model = modelNames.length ? select(card, 'Model', modelNames, config.modelId || provider.defaultModelId || modelNames[0]?.id) : undefined;
 		const customModel = ['llm', 'image', 'video', 'tts', 'asr', 'realtime'].includes(provider.service) ? field(card, 'Add Model ID', '', 'text', 'Optional custom model') : undefined;
 		const extraInputs = [];
+		if (provider.service === 'realtime') {
+			extraInputs.push(['voiceId', field(card, 'Voice', config.fields?.voiceId || '', 'text', provider.type === 'personaplex' ? 'NATF2.pt' : 'Optional voice ID')]);
+			extraInputs.push(['instructions', field(card, 'Instructions', config.fields?.instructions || '', 'text', 'Optional system prompt')]);
+			if (['moshi', 'personaplex'].includes(provider.type)) card.append(element('p', 'subtle', 'Requires a running local server and FFmpeg with libopus on PATH. Input transcripts require a configured ASR provider.'));
+		}
 		for (const schema of catalog.serviceFieldSchemas?.[provider.service] || []) {
 			const source = provider[schema.source];
 			if (schema.type === 'select' && Array.isArray(source) && source.length) {
@@ -312,7 +317,7 @@
 		const name = field(card, 'Name', '', 'text', 'My provider');
 		const protocol = category === 'llm'
 			? select(card, 'Protocol', [{ id: 'openai', name: 'OpenAI Compatible' }, { id: 'anthropic', name: 'Anthropic' }, { id: 'google', name: 'Google Gemini' }, { id: 'azure', name: 'Azure OpenAI' }], 'openai')
-			: category === 'realtime' ? select(card, 'Protocol', [{ id: 'openai-realtime', name: 'OpenAI Realtime Compatible' }], 'openai-realtime') : undefined;
+			: category === 'realtime' ? select(card, 'Protocol', [{ id: 'openai-realtime', name: 'OpenAI Realtime Compatible' }, { id: 'gemini-live', name: 'Google Gemini Live' }, { id: 'moshi', name: 'Kyutai Moshi' }, { id: 'personaplex', name: 'NVIDIA PersonaPlex' }, { id: 'nemotron-voicechat', name: 'NVIDIA Nemotron VoiceChat' }], 'openai-realtime') : undefined;
 		const url = field(card, 'Base URL', '', 'url', 'https://…');
 		const model = ['llm', 'image', 'video', 'tts', 'asr', 'realtime'].includes(category) ? field(card, 'Model ID', '', 'text', 'Optional') : undefined;
 		const secret = field(card, 'API Key', '', 'password', 'Saved securely');

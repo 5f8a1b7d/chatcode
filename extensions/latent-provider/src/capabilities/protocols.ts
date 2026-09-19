@@ -4,5 +4,5 @@ export function supportedTextProtocol(protocol: string | undefined): boolean {
 }
 
 export function supportedRealtimeProtocol(protocol: string | undefined): boolean {
-	return protocol === 'openai-realtime';
+	return ['openai-realtime', 'gemini-live', 'moshi', 'personaplex', 'nemotron-voicechat'].includes(protocol ?? '');
 }

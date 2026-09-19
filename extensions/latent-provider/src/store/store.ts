@@ -62,7 +62,7 @@ export const stateKey = 'latent.provider.state.v2';
 export const secretPrefix = 'customProviders.secret.v1.';
 
 const supportedLlmProtocols = ['openai', 'azure', 'anthropic', 'google'];
-const supportedRealtimeProtocols = ['openai-realtime'];
+const supportedRealtimeProtocols = ['openai-realtime', 'gemini-live', 'moshi', 'personaplex', 'nemotron-voicechat'];
 
 export class ProviderStore {
 	private state: SavedState;
@@ -216,7 +216,7 @@ export class ProviderStore {
 		for (const [slot, value] of Object.entries(extraSecrets)) {
 			if (value.trim()) await this.context.secrets.store(secretPrefix + `${key}.${slot}`, value.trim());
 		}
-		const safeFields = Object.fromEntries(Object.entries(config.fields ?? {}).filter(([name, value]) => ['region', 'resourceId', 'aspectRatio', 'style', 'duration', 'resolution', 'voiceId', 'format', 'speed', 'language', 'backend', 'source_webSearch', 'source_baike', 'source_scholar'].includes(name) && typeof value === 'string' && value.length <= 500));
+		const safeFields = Object.fromEntries(Object.entries(config.fields ?? {}).filter(([name, value]) => ['region', 'resourceId', 'aspectRatio', 'style', 'duration', 'resolution', 'voiceId', 'instructions', 'format', 'speed', 'language', 'backend', 'source_webSearch', 'source_baike', 'source_scholar'].includes(name) && typeof value === 'string' && value.length <= 500));
 		this.state.providers[key] = {
 			enabled: config.enabled === true,
 			...(config.baseUrl ? { baseUrl: config.baseUrl.trim() } : {}),
@@ -280,7 +280,7 @@ export class ProviderStore {
 function isAllowedBaseUrl(value: string): boolean {
 	try {
 		const url = new URL(value);
-		return url.protocol === 'http:' || url.protocol === 'https:' || url.protocol === 'wss:';
+		return url.protocol === 'http:' || url.protocol === 'https:' || url.protocol === 'wss:' || (url.protocol === 'ws:' && ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname));
 	} catch {
 		return false;
 	}

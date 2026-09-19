@@ -6,7 +6,7 @@ export const LATENT_FLOATING_WINDOW_CHANNEL = 'latentFloatingWindow';
 
 /** Fixed compact size of the Floating Window (P2-FR-060); a constant, not a setting. */
 export const FLOATING_WINDOW_WIDTH = 360;
-export const FLOATING_WINDOW_HEIGHT = 132;
+export const FLOATING_WINDOW_HEIGHT = 80;
 
 export type FloatingVoiceState = 'off' | 'connecting' | 'listening' | 'speaking' | 'error';
 

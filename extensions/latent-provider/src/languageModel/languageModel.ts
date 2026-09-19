@@ -50,12 +50,11 @@ export class CatalogLanguageModelProvider implements vscode.LanguageModelChatPro
 		if (!catalog) {
 			return infos;
 		}
-		const store = this.manager.getStore();
-		for (const active of store.listActiveBindings(catalog).filter(binding => binding.service === 'llm' && supportedTextProtocol(binding.protocol))) {
+		for (const active of this.manager.listActiveBindings().filter(binding => binding.service === 'llm' && supportedTextProtocol(binding.protocol))) {
 			const provider = catalog.providers.find(provider => provider.service === 'llm' && provider.id === active.providerId);
 			const plan = active.source === 'plan' ? catalog.tokenPlans.find(plan => plan.id === active.sourceId) : undefined;
 			const requiresApiKey = active.source === 'plan' || provider?.requiresApiKey === true;
-			if (requiresApiKey && !(await store.hasSecret(active.secretRef))) {
+			if (requiresApiKey && !(await this.manager.hasSecret(active.secretRef))) {
 				continue;
 			}
 			const ownerName = plan?.name || provider?.name || active.providerId;
@@ -92,7 +91,7 @@ export class CatalogLanguageModelProvider implements vscode.LanguageModelChatPro
 		if (!binding) {
 			throw vscode.LanguageModelError.NotFound('Model configuration changed.');
 		}
-		const secret = await this.manager.getStore().getSecret(binding.secretRef);
+		const secret = await this.manager.getSecret(binding.secretRef);
 		if (binding.requiresApiKey && !secret) {
 			throw vscode.LanguageModelError.Blocked('Provider credential is missing.');
 		}

@@ -23,17 +23,20 @@
       {
         "command": "latent.provider.manage",
         "title": "%command.manage%",
-        "category": "%category%"
+        "category": "%category%",
+        "enablement": "!latent.providerConfigurationHidden"
       },
       {
         "command": "latentnote.manageProviders",
         "title": "%command.manage%",
-        "category": "%category%"
+        "category": "%category%",
+        "enablement": "!latent.providerConfigurationHidden"
       },
       {
         "command": "latent.provider.configureCapability",
         "title": "%command.configureCapability%",
-        "category": "%category%"
+        "category": "%category%",
+        "enablement": "!latent.providerConfigurationHidden"
       }
     ],
     "languageModelChatProviders": [
@@ -51,6 +54,22 @@
           "description": "%configuration.enabled.description%"
         }
       }
+    },
+    "menus": {
+      "commandPalette": [
+        {
+          "command": "latent.provider.manage",
+          "when": "!latent.providerConfigurationHidden"
+        },
+        {
+          "command": "latentnote.manageProviders",
+          "when": "!latent.providerConfigurationHidden"
+        },
+        {
+          "command": "latent.provider.configureCapability",
+          "when": "!latent.providerConfigurationHidden"
+        }
+      ]
     }
   },
   "scripts": {

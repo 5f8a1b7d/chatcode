@@ -1,6 +1,8 @@
 import * as vscode from 'vscode';
 import { CatalogProvider, ProviderCatalog, ServiceId, loadProviderCatalog, providerKey } from '../catalog/catalog';
-import { ProviderConfiguration, ProviderStore } from '../store/store';
+import type { IExternalProvider } from '../api';
+import { externalActiveBindings, externalCatalogProviders, externalSecretPrefix, validateExternalProvider } from '../external/externalProviders';
+import { ActiveProviderBinding, ProviderConfiguration, ProviderStore } from '../store/store';
 
 export const ProviderEnabledSetting = 'latent.provider.enabled';
 /** Legacy Study Buddy setting, honoured as a fallback until removed (spec 02 §6.2). */
@@ -43,6 +45,8 @@ export class ProviderManager implements vscode.Disposable {
 	private readonly disposables: vscode.Disposable[] = [];
 
 	private focusCapability: string | undefined;
+	private readonly externalProviders = new Map<string, IExternalProvider>();
+	private configurationHidden = false;
 
 	constructor(private readonly context: vscode.ExtensionContext, private readonly matrix: () => Promise<CapabilityMatrix>) {
 		this.store = new ProviderStore(context);
@@ -64,7 +68,60 @@ export class ProviderManager implements vscode.Disposable {
 	}
 
 	getCatalog(): ProviderCatalog | undefined {
-		return this.catalog ? { ...this.catalog, providers: [...this.catalog.providers, ...this.store.getCustomProviders()] } : undefined;
+		const external = [...this.externalProviders.values()].flatMap(externalCatalogProviders);
+		return this.catalog ? { ...this.catalog, providers: [...this.catalog.providers, ...this.store.getCustomProviders(), ...external] } : undefined;
+	}
+
+	/** Product override: local configuration is hidden and only external providers are offered. */
+	setConfigurationHidden(hidden: boolean): void {
+		if (this.configurationHidden !== hidden) {
+			this.configurationHidden = hidden;
+			if (hidden) {
+				this.panel?.dispose();
+			}
+			this.changeEmitter.fire();
+		}
+	}
+
+	isConfigurationHidden(): boolean {
+		return this.configurationHidden;
+	}
+
+	registerExternalProvider(provider: IExternalProvider): vscode.Disposable {
+		validateExternalProvider(provider);
+		const declared = vscode.extensions.all.some(extension => {
+			const declarations = (extension.packageJSON as { contributes?: { latentProviderCapabilities?: { id?: string }[] } }).contributes?.latentProviderCapabilities;
+			return Array.isArray(declarations) && declarations.some(declaration => declaration.id === provider.id);
+		});
+		if (!declared) {
+			throw new Error(`Provider ${provider.id} is not declared under contributes.latentProviderCapabilities.`);
+		}
+		this.externalProviders.set(provider.id, provider);
+		this.changeEmitter.fire();
+		return new vscode.Disposable(() => {
+			if (this.externalProviders.get(provider.id) === provider) {
+				this.externalProviders.delete(provider.id);
+				this.changeEmitter.fire();
+			}
+		});
+	}
+
+	/** Locally configured bindings (unless hidden) followed by external provider bindings. */
+	listActiveBindings(): ActiveProviderBinding[] {
+		const catalog = this.getCatalog();
+		const local = catalog && !this.configurationHidden ? this.store.listActiveBindings(catalog).filter(binding => !this.externalProviders.has(binding.providerId)) : [];
+		return [...local, ...[...this.externalProviders.values()].flatMap(externalActiveBindings)];
+	}
+
+	async hasSecret(ref: string): Promise<boolean> {
+		return !!(await this.getSecret(ref));
+	}
+
+	async getSecret(ref: string): Promise<string | undefined> {
+		if (ref.startsWith(externalSecretPrefix)) {
+			return this.externalProviders.get(ref.slice(externalSecretPrefix.length))?.getCredential();
+		}
+		return this.store.getSecret(ref);
 	}
 
 	getStore(): ProviderStore {
@@ -86,6 +143,10 @@ export class ProviderManager implements vscode.Disposable {
 
 	/** Opens the manager; with `capability` the capability matrix is shown filtered to that capability (P2-FR-053). */
 	async open(options?: { capability?: string }): Promise<void> {
+		if (this.configurationHidden) {
+			void vscode.window.showInformationMessage(vscode.l10n.t('Models are provided by your organization. Local model configuration is not available in this build.'));
+			return;
+		}
 		if (!this.isEnabled()) {
 			void vscode.window.showInformationMessage(vscode.l10n.t('Enable latent.provider.enabled to manage providers.'));
 			return;

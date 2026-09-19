@@ -3881,6 +3881,62 @@ providers:
     features:
       - duplex
       - transcription
+  - id: kyutai-moshi
+    service: realtime
+    category: realtime
+    name: Kyutai Moshi (Local)
+    type: moshi
+    defaultBaseUrl: http://localhost:8998
+    requiresApiKey: false
+    supportsModelDiscovery: false
+    models:
+      - id: moshi
+        name: Kyutai Moshi (Local)
+    features:
+      - duplex
+
+  - id: nvidia-personaplex
+    service: realtime
+    category: realtime
+    name: NVIDIA PersonaPlex (Local)
+    type: personaplex
+    defaultBaseUrl: http://localhost:8998
+    requiresApiKey: false
+    supportsModelDiscovery: false
+    models:
+      - id: personaplex
+        name: NVIDIA PersonaPlex (Local)
+    features:
+      - duplex
+
+  - id: nvidia-nemotron-voicechat
+    service: realtime
+    category: realtime
+    name: NVIDIA Nemotron VoiceChat (Local)
+    type: nemotron-voicechat
+    defaultBaseUrl: http://localhost:8080/v1
+    requiresApiKey: false
+    supportsModelDiscovery: false
+    models:
+      - id: nemotron-voicechat
+        name: NVIDIA Nemotron VoiceChat (Local)
+    features:
+      - duplex
+
+  - id: google-gemini-live
+    service: realtime
+    category: realtime
+    name: Google Gemini Live
+    type: gemini-live
+    defaultBaseUrl: https://generativelanguage.googleapis.com
+    requiresApiKey: true
+    supportsModelDiscovery: false
+    models:
+      - id: gemini-3.8-live
+        name: Google Gemini Live
+    features:
+      - duplex
+
 tokenPlans:
   - id: minimax
     name: MiniMax

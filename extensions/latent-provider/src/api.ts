@@ -88,13 +88,16 @@ export interface IRealtimeVoiceSession extends vscode.Disposable {
 	/** PCM16 mono audio at 24 kHz. */
 	sendAudio(chunk: Uint8Array): void;
 	commitAudio(): void;
+	/** Flush pending transcription before the transport is closed. */
+	finish?(): Promise<void>;
 	readonly onAudio: vscode.Event<Uint8Array>;
+	readonly onInterrupted?: vscode.Event<void>;
 	readonly onTranscript: vscode.Event<IRealtimeTranscript>;
 	readonly onDidClose: vscode.Event<{ readonly reason: string }>;
 	interrupt(): void;
 }
 
-/** Connection details a trusted renderer can use to open the realtime session itself. */
+/** Single-use local transport details; never contains provider credentials. */
 export interface IRealtimeConnection {
 	readonly url: string;
 	readonly protocols: readonly string[];
@@ -102,8 +105,38 @@ export interface IRealtimeConnection {
 	readonly providerId: string;
 }
 
+/** One model of an extension-declared provider (spec 02 `latentProviderCapabilities`). */
+export interface IExternalProviderModel {
+	readonly id: string;
+	readonly name: string;
+	readonly capabilities: readonly ProviderCapability[];
+	readonly contextWindow?: number;
+	readonly outputWindow?: number;
+	readonly tools?: boolean;
+}
+
+/**
+ * A provider declared by another extension. The declaring extension lists the
+ * provider id under `contributes.latentProviderCapabilities` and registers the
+ * live model list at runtime; registering the same id again replaces it.
+ */
+export interface IExternalProvider {
+	readonly id: string;
+	readonly name: string;
+	/** OpenAI-compatible base URL, for example `https://example.org/v1`. */
+	readonly baseUrl: string;
+	/** Wire protocol per capability; defaults to `openai` and `openai-realtime` for realtime voice. */
+	readonly protocols?: Partial<Record<ProviderCapability, string>>;
+	readonly models: readonly IExternalProviderModel[];
+	/** Returns the bearer credential, or undefined while signed out. Never stored by this extension. */
+	getCredential(): Promise<string | undefined>;
+}
+
 export interface ILatentProviderApi {
 	readonly version: 1;
+	/** True when the product hides local model configuration; only external providers are then offered. */
+	readonly configurationHidden: boolean;
+	registerExternalProvider(provider: IExternalProvider): vscode.Disposable;
 	readonly onDidChangeBindings: vscode.Event<void>;
 	resolve(request: ICapabilityRequest): Promise<ICapabilityBinding>;
 	listBindings(capability: ProviderCapability): Promise<readonly ICapabilityBinding[]>;
