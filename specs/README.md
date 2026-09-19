@@ -13,6 +13,16 @@ acceptance-scenario format so that they can be implemented and verified independ
 The two product screenshots under `screenshots/` are interaction references for the side chat and
 for selection annotations only. Text inside them is not a product requirement.
 
+The [Part 1](01-ai-interaction.md) and [Part 2](02-selection-provider-extensions.md) acceptance sections
+record the 2026-09-18 manual QA results, the separately labeled 2026-09-19 field observations,
+and the 2026-09-19 fix/computer-use retest tables. The latter distinguish live UI passes,
+unit-verified fixes, known gaps and the blockers at the time of each run. The latest
+Persistent-profile follow-up records the resolved Keychain issue, real Gemini Live handshake and
+secure restart, Qwen UI smoke tests, and the subsequently fixed branch-persistence regression.
+Audible voice/local-backend and live external-session cases remain explicitly qualified.
+These status snapshots describe the tested build; the requirement and acceptance rows describe
+the intended behavior for subsequent implementation and retesting.
+
 ## Conventions used by every specification
 
 - **Requirement IDs** are `P<part>-FR-<nnn>`. **Acceptance scenarios** are `P<part>-AS-<nnn>` and are

@@ -7,7 +7,7 @@ seams as possible, so that merging upstream stays cheap.
 ## Rules
 
 1. New behaviour goes in new files under a fork-specific folder name
-   (`latent`, `latentSelection`, `latentFloatingWindow`, `studyspace`, `studyBuddySession`, `extensions/latent-*`, `extensions/studybuddy`).
+   (`latent`, `latentSelection`, `latentFloatingWindow`, `extensions/latent-*`).
 2. Upstream files are touched only to register fork code, ideally with a single
    line delegating to a fork-owned entry file. Mark the line with a `Latent` comment.
 3. Never delete upstream code to make room for a fork feature. Hide it through
@@ -37,10 +37,10 @@ the list below, then run `npm run valid-layers-check` and `npm run typecheck-cli
 | `src/vs/platform/extensions/common/extensions.ts` | Added the optional `languageModelChatProviders` contribution field read by that fallback. |
 | `src/vs/workbench/contrib/chat/browser/widget/input/chatInputPart.ts` | Composer plugin hooks used by the compact and floating composers. |
 | `src/vs/workbench/contrib/chat/browser/widget/input/compactComposer.ts`, `src/vs/workbench/contrib/chat/common/composer/*` | Fork-owned composer model and compact renderer; they live in upstream folders because `chatInputPart.ts` depends on them. |
-| `build/gulpfile.extensions.ts`, `build/npm/dirs.ts` | Register `extensions/studybuddy`, `extensions/latent-provider`, and `extensions/latent-selection` with the build. |
+| `build/gulpfile.extensions.ts`, `build/npm/dirs.ts` | Register `extensions/latent-provider` and `extensions/latent-selection` with the build. |
 | `build/lib/i18n.resources.json` | Register fork folders for localisation. |
 | `package.json`, `package-lock.json` | Add the `selection-hook` native dependency. |
-| `.gitignore`, `AGENTS.md` | Fork housekeeping. |
+| `.gitignore`, `AGENTS.md` | Fork housekeeping; `.gitignore` also keeps derivative-build sources (`/latent-private/`, `/src/vs/workbench/contrib/latentPrivate/`) out of this repository. |
 
 ## Fork entry points
 
@@ -51,7 +51,10 @@ the list below, then run `npm run valid-layers-check` and `npm run typecheck-cli
 - `src/vs/workbench/contrib/latentSelection`, `src/vs/platform/latentSelection`: the Selection Bar and the system-wide selection listener.
 - `src/vs/platform/latentFloatingWindow`, `src/vs/workbench/contrib/latent/electron-browser/floatingWindow`: the system-level floating window and its voice session.
 - `src/vs/latentRuntime`, `src/vs/platform/latentRuntime`, `src/vs/workbench/contrib/latent/browser/runtime`: the Managed Runtime process (gateways, bots, memory, capabilities, artifacts, scheduled jobs), its main-process supervisor, and the workbench Bots view.
-- `extensions/latent-provider`: provider configuration, credentials, and the capability model.
+  - Runtime plugins (`src/vs/platform/latentRuntime/common/runtimePlugin.ts`, `src/vs/latentRuntime/node/plugins`): ES modules registered by extensions that add gateway platforms, bot tools, and memory adapters.
+  - `latent.runtime.api.*` commands (`browser/runtime/runtimeApiCommands.ts`): extension access to bots, sessions, approvals, gateways, memory, artifacts, and plugins.
+- `src/vs/workbench/contrib/latent/browser/latentProduct.ts`: product overrides of derivative builds (`latentPrivate` in `product.json`) as context keys, and the optional derivative workbench overlay loaded from `vs/workbench/contrib/latentPrivate/`.
+- `extensions/latent-provider`: provider configuration, credentials, the capability model, and providers registered by other extensions (`latentProviderCapabilities`).
 - `extensions/latent-selection`: selection actions and the action extension point.
-- `extensions/studybuddy`: the remaining Study Buddy learning features (moved to the private plugin by spec 03).
+- StudySpace and the Study Buddy harness hand-off live in the private derivative's workbench overlay. The public composer can select a derivative-provided default participant through `latentPrivate.defaultComposerAgentId` without naming a research participant.
 - `specs/`: formal specifications for the three-part AI workbench (Parts 1 and 2 are committed; Part 3 is local-only and ignored).
