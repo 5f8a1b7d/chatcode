@@ -1,5 +1,9 @@
 /* eslint-disable header/header */
 import { $, append, clearNode } from '../../../../../base/browser/dom.js';
+import { Event } from '../../../../../base/common/event.js';
+import { constObservable } from '../../../../../base/common/observable.js';
+import { IChatSessionsService } from '../../../chat/common/chatSessionsService.js';
+import { runtimeSessionHistory } from './runtimeSessionHistory.js';
 import { Codicon } from '../../../../../base/common/codicons.js';
 import { Disposable, DisposableStore, MutableDisposable } from '../../../../../base/common/lifecycle.js';
 import { URI } from '../../../../../base/common/uri.js';
@@ -26,7 +30,7 @@ import { Extensions as ViewExtensions, IViewDescriptorService, IViewsRegistry } 
 import { IStatusbarEntryAccessor, IStatusbarService, StatusbarAlignment } from '../../../../services/statusbar/browser/statusbar.js';
 import { VIEW_CONTAINER as ExplorerViewContainer } from '../../../files/browser/explorerViewlet.js';
 import { IBotConfig, IGatewayConfig, IModelBinding, IRuntimeApprovalRequest, IRuntimeState, IScheduledJob } from '../../../../../platform/latentRuntime/common/runtimeProtocol.js';
-import { IThread, IThreadService } from '../../common/threads.js';
+import { IThreadService } from '../../common/threads.js';
 import { sessionsSearchSources } from '../../common/sessionsSearch.js';
 import { LatentSettings } from '../latentConfiguration.js';
 import { IManagedRuntimeService } from './managedRuntimeService.js';
@@ -47,6 +51,7 @@ export class RuntimeContribution extends Disposable implements IWorkbenchContrib
 		@INotificationService private readonly notificationService: INotificationService,
 		@IThreadService private readonly threadService: IThreadService,
 		@ILogService private readonly logService: ILogService,
+		@IChatSessionsService private readonly chatSessionsService: IChatSessionsService,
 	) {
 		super();
 		this._register(this.runtime.onDidChangeState(state => { this.state = state; this.updateStatus(); }));
@@ -56,23 +61,30 @@ export class RuntimeContribution extends Disposable implements IWorkbenchContrib
 				this.logService.info(`[LatentRuntime] ${notification.gatewayId}/${notification.chatId} ${notification.sender}: ${notification.text.slice(0, 80)}`);
 			}
 		}));
+		this._register(this.chatSessionsService.registerChatSessionContentProvider('latent-runtime', {
+			provideChatSessionContent: async sessionResource => {
+				const sessionId = sessionResource.path.slice(1);
+				const session = (await this.runtime.listSessions()).find(candidate => candidate.sessionId === sessionId);
+				if (!session) { throw new Error(localize('latent.runtime.missingSession', "The runtime session is no longer available.")); }
+				return {
+					sessionResource, title: session.title,
+					history: runtimeSessionHistory(await this.runtime.getSessionTurns(sessionId)),
+					isReadOnly: constObservable(true), onWillDispose: Event.None, dispose() { },
+				};
+			},
+		}));
 		this._register(sessionsSearchSources.register({
 			id: 'latent.runtime',
+			onDidChange: Event.any(Event.map(this.runtime.onDidChangeState, () => undefined), Event.map(this.runtime.onDidNotify, () => undefined)),
 			search: async query => {
 				if (!this.state?.connected) {
 					return [];
 				}
 				const sessions = await this.runtime.listSessions();
-				return sessions.filter(session => !query || session.title.toLowerCase().includes(query.toLowerCase())).map((session): IThread => ({
-					id: `runtime:${session.sessionId}`,
-					title: `${session.title} (${session.botId})`,
-					tabKey: undefined,
-					origin: 'runtime',
-					createdAt: session.createdAt,
-					updatedAt: session.updatedAt,
-					activeBranchId: session.sessionId,
-					branches: [{ id: session.sessionId, sessionResource: URI.from({ scheme: 'latent-runtime', path: `/${session.sessionId}` }), parentBranchId: undefined, forkTurnIndex: undefined, createdAt: session.createdAt, label: localize('latent.runtime.sessionBranch', "Runtime session") }],
-				}));
+				return sessions.filter(session => !query || `${session.title} ${session.botId}`.toLowerCase().includes(query.toLowerCase())).map(session =>
+					this.threadService.adoptSession(URI.from({ scheme: 'latent-runtime', path: `/${session.sessionId}` }), {
+						title: `${session.title} (${session.botId})`, origin: 'runtime', createdAt: session.createdAt, updatedAt: session.updatedAt,
+					}));
 			},
 		}));
 		this._register(this.configurationService.onDidChangeConfiguration(event => {
@@ -107,6 +119,7 @@ export class RuntimeContribution extends Disposable implements IWorkbenchContrib
 		try {
 			const turns = [];
 			for (const thread of this.threadService.listThreads().slice(0, 50)) {
+				if (thread.origin === 'runtime') { continue; }
 				for (const branch of thread.branches) {
 					for (const turn of await this.threadService.getTurns(thread.id, branch.id)) {
 						turns.push({ sessionId: branch.sessionResource.toString(), threadId: thread.id, branchId: branch.id, seq: turn.index * 2 + (turn.role === 'assistant' ? 1 : 0), role: turn.role, blockType: 'text' as const, text: turn.text, timestamp: turn.timestamp, harness: 'workbench', workdir: thread.tabKey?.resource.path ?? '' });

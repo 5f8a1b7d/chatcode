@@ -509,6 +509,13 @@ export enum QuickPickFocus {
 /**
  * Represents a quick pick control that allows the user to select an item from a list of options.
  */
+/**
+ * Browser-owned content rendered by a quick pick without exposing DOM types from the common layer.
+ */
+export interface IQuickPickAdditionalContent {
+	readonly element: object;
+}
+
 export interface IQuickPick<T extends IQuickPickItem, O extends { useSeparators: boolean } = { useSeparators: false }> extends IQuickInput {
 
 	/**
@@ -607,6 +614,11 @@ export interface IQuickPick<T extends IQuickPickItem, O extends { useSeparators:
 	 * An event that is fired when a separator button is triggered.
 	 */
 	readonly onDidTriggerSeparatorButton: Event<IQuickPickSeparatorButtonEvent>;
+
+	/**
+	 * Additional content rendered between the input and the list.
+	 */
+	additionalContent?: IQuickPickAdditionalContent;
 
 	/**
 	 * The items to be displayed in the quick pick.

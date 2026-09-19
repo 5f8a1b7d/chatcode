@@ -63,6 +63,18 @@ export interface IAnythingQuickPickItem extends IPickerQuickAccessItem, IQuickPi
 	readonly editor?: EditorInput | IResourceEditorInput;
 }
 
+export interface IAnythingQuickAccessContentProvider extends IDisposable {
+	provide(picker: IQuickPick<IAnythingQuickPickItem, { useSeparators: true }>, token: CancellationToken, runOptions?: AnythingQuickAccessProviderRunOptions): IDisposable;
+}
+
+type IAnythingQuickAccessContentProviderConstructor = new (...args: never[]) => IAnythingQuickAccessContentProvider;
+
+const contentProviderConstructors: IAnythingQuickAccessContentProviderConstructor[] = [];
+
+export function registerAnythingQuickAccessContentProvider(ctor: IAnythingQuickAccessContentProviderConstructor): void {
+	contentProviderConstructors.push(ctor);
+}
+
 interface IEditorSymbolAnythingQuickPickItem extends IAnythingQuickPickItem {
 	resource: URI;
 	range: { decoration: IRange; selection: IRange };
@@ -227,6 +239,10 @@ export class AnythingQuickAccessProvider extends PickerQuickAccessProvider<IAnyt
 
 		// Update the pick state for this run
 		this.pickState.set(picker);
+		for (const ctor of contentProviderConstructors) {
+			const contentProvider = disposables.add(this.instantiationService.createInstance(ctor));
+			disposables.add(contentProvider.provide(picker, token, runOptions));
+		}
 
 		// Add editor decorations for active editor symbol picks
 		const editorDecorationsDisposable = disposables.add(new MutableDisposable());

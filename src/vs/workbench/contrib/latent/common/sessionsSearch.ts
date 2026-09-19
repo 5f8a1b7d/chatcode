@@ -18,8 +18,12 @@ class SessionsSearchSourceRegistry {
 
 	register(source: ISessionsSearchSource): IDisposable {
 		this.sources.set(source.id, source);
+		const listener = source.onDidChange?.(() => {
+			if (this.sources.get(source.id) === source) { this._onDidChange.fire(); }
+		});
 		this._onDidChange.fire();
 		return toDisposable(() => {
+			listener?.dispose();
 			if (this.sources.get(source.id) === source) {
 				this.sources.delete(source.id);
 				this._onDidChange.fire();

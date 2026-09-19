@@ -1,65 +1,181 @@
-.latent-sessions-search .latent-sessions-header {
-	padding: 4px 8px;
+.latent-sessions-quick-access {
+	padding: 2px 6px 4px;
 }
 
-.latent-sessions-search .latent-sessions-columns {
+.latent-sessions-quick-access-header {
 	display: flex;
-	flex-direction: row;
-	overflow: hidden;
+	align-items: center;
+	height: 32px;
+	padding: 0 6px;
 }
 
-.latent-sessions-search .latent-sessions-columns .column {
-	flex: 1 1 0;
-	min-width: 120px;
-	border-right: 1px solid var(--vscode-sideBarSectionHeader-border, var(--vscode-widget-border));
-	overflow: hidden;
+.latent-sessions-quick-access-title {
+	box-sizing: border-box;
+	flex: 1;
+	color: var(--vscode-descriptionForeground);
+	font-size: var(--vscode-bodyFontSize-xSmall);
+	font-weight: 600;
+	line-height: 18px;
 }
 
-.latent-sessions-search .latent-sessions-columns .preview {
-	flex: 1 1 0;
-	min-width: 120px;
+.latent-sessions-quick-access-modes {
+	display: flex;
+	align-items: center;
+	gap: 2px;
+}
+
+.latent-sessions-quick-access-mode {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 24px;
+	height: 24px;
+	padding: 0;
+	border: 1px solid transparent;
+	border-radius: var(--vscode-cornerRadius-small);
+	background: transparent;
+	color: var(--vscode-icon-foreground);
+	cursor: pointer;
+}
+
+.latent-sessions-quick-access-mode:hover {
+	background: var(--vscode-toolbar-hoverBackground);
+}
+
+.latent-sessions-quick-access-mode[aria-pressed="true"] {
+	border-color: var(--vscode-contrastBorder, transparent);
+	background: var(--vscode-toolbar-activeBackground, var(--vscode-button-secondaryBackground));
+	color: var(--vscode-foreground);
+}
+
+.latent-sessions-quick-access-mode:focus-visible {
+	outline: 1px solid var(--vscode-focusBorder);
+	outline-offset: -1px;
+}
+
+.latent-sessions-quick-access-mode .codicon {
+	pointer-events: none;
+}
+
+.latent-sessions-quick-access-list {
+	max-height: 220px;
+	overflow-y: auto;
+	overflow-x: hidden;
+	scrollbar-color: var(--vscode-scrollbarSlider-background) transparent;
+}
+
+.latent-sessions-quick-access-list[hidden],
+.latent-sessions-quick-access-columns[hidden] {
+	display: none;
+}
+
+.latent-sessions-quick-access-columns {
+	display: grid;
+	grid-template-columns: minmax(140px, 1.15fr) minmax(120px, 1fr) minmax(140px, 1fr) minmax(170px, 1.35fr);
+	height: 220px;
+	max-height: 220px;
+	overflow-x: auto;
+	overflow-y: hidden;
+	border-top: 1px solid var(--vscode-widget-border, transparent);
+	scrollbar-color: var(--vscode-scrollbarSlider-background) transparent;
+}
+
+.latent-sessions-quick-access-column,
+.latent-sessions-quick-access-preview {
+	min-width: 0;
+	overflow-x: hidden;
+	overflow-y: auto;
+}
+
+.latent-sessions-quick-access-column {
+	border-right: 1px solid var(--vscode-widget-border, transparent);
+}
+
+.latent-sessions-quick-access-preview {
+	box-sizing: border-box;
 	padding: 8px;
-	overflow: auto;
 	white-space: pre-wrap;
 }
 
-.latent-sessions-search .latent-sessions-columns .preview .role {
+.latent-sessions-quick-access-preview .role {
 	font-weight: 600;
 }
 
-.latent-sessions-search .latent-sessions-columns .preview .time {
-	opacity: 0.7;
-	font-size: 0.9em;
+.latent-sessions-quick-access-preview .time {
 	margin-bottom: 6px;
+	color: var(--vscode-descriptionForeground);
+	font-size: var(--vscode-bodyFontSize-small);
 }
 
-.latent-sessions-search .latent-sessions-columns .preview pre.text {
-	white-space: pre-wrap;
-	font-family: inherit;
+.latent-sessions-quick-access-preview pre.text {
 	margin: 0;
+	font-family: inherit;
+	white-space: pre-wrap;
+	word-break: break-word;
 }
 
-.latent-sessions-row {
+.latent-sessions-quick-access-preview .attachments {
+	margin: 8px 0 0;
+	padding-left: 20px;
+}
+
+.latent-sessions-quick-access-row {
+	box-sizing: border-box;
 	display: flex;
 	flex-direction: column;
 	justify-content: center;
+	width: 100%;
 	height: 44px;
-	padding: 0 8px;
-	overflow: hidden;
+	padding: 4px 6px;
+	border: 0;
+	border-radius: var(--vscode-cornerRadius-small);
+	background: transparent;
+	color: var(--vscode-quickInput-foreground);
+	font: inherit;
+	text-align: left;
+	cursor: pointer;
 }
 
-.latent-sessions-row .title {
-	white-space: nowrap;
-	overflow: hidden;
-	text-overflow: ellipsis;
+.latent-sessions-quick-access-row:hover {
+	background: var(--vscode-list-hoverBackground);
+	color: var(--vscode-list-hoverForeground);
 }
 
-.latent-sessions-row .detail {
-	white-space: nowrap;
+.latent-sessions-quick-access-row.selected {
+	background: var(--vscode-list-activeSelectionBackground);
+	color: var(--vscode-list-activeSelectionForeground);
+}
+
+.latent-sessions-quick-access-row:focus-visible {
+	outline: 1px solid var(--vscode-list-focusOutline);
+	outline-offset: -1px;
+	background: var(--vscode-quickInputList-focusBackground);
+	color: var(--vscode-quickInputList-focusForeground);
+}
+
+.latent-sessions-quick-access-row .title,
+.latent-sessions-quick-access-row .detail {
+	width: 100%;
 	overflow: hidden;
 	text-overflow: ellipsis;
-	opacity: 0.7;
-	font-size: 0.9em;
+	white-space: nowrap;
+}
+
+.latent-sessions-quick-access-row .title {
+	line-height: 20px;
+}
+
+.latent-sessions-quick-access-row .detail {
+	color: var(--vscode-descriptionForeground);
+	font-size: var(--vscode-bodyFontSize-small);
+	line-height: 16px;
+}
+
+.latent-sessions-quick-access-row:hover .detail,
+.latent-sessions-quick-access-row.selected .detail,
+.latent-sessions-quick-access-row:focus-visible .detail {
+	color: inherit;
+	opacity: 0.8;
 }
 
 /* Latent: Bots view in the Explorer */
@@ -88,8 +204,8 @@
 .latent-bots-view button.monaco-button {
 	margin: 2px 0 6px;
 	padding: 2px 8px;
-	border-radius: 2px;
 	border: 1px solid var(--vscode-button-border, transparent);
+	border-radius: 2px;
 	background: var(--vscode-button-secondaryBackground);
 	color: var(--vscode-button-secondaryForeground);
 	cursor: pointer;
