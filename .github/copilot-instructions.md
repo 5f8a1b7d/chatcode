@@ -153,3 +153,9 @@ function f(x: number, y: string): void { }
 ## Learnings
 - Minimize the amount of assertions in tests. Prefer one snapshot-style `assert.deepStrictEqual` over multiple precise assertions, as they are much more difficult to understand and to update.
 - Do not stub a global object (e.g. `(mainWindow as any).ResizeObserver = ...`) or use `any` casts to install fakes in tests. Instead, make the dependency injectable: add an optional constructor parameter on the production class that defaults to the real implementation (e.g. `targetWindow.ResizeObserver`), and have the test pass a fake that implements the real interface.
+
+## Product Scope
+- chatcode is a general-purpose IDE with chat and agents, comparable to Hermes or Codex. Only add features that any user of a general-purpose IDE would want.
+- Functionality tied to a particular field, organization, or backend service (domain-specific bot tools, preset bots and their prompts, proprietary server integrations) belongs in a separate derivative, not in this repository.
+- This repository only provides neutral extension points for derivatives (runtime plugin registries, product overrides) and never names or describes what a derivative contains.
+- When it is unclear whether a feature is general-purpose, ask before adding it.
