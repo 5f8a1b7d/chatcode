@@ -318,6 +318,7 @@ import './contrib/url/browser/url.contribution.js';
 
 // Webview
 import './contrib/webview/browser/webview.contribution.js';
+import './contrib/latent/browser/overlayWebview/firstPartyOverlayWebview.contribution.js'; // Latent
 import './contrib/webviewPanel/browser/webviewPanel.contribution.js';
 import './contrib/webviewView/browser/webviewView.contribution.js';
 import './contrib/customEditor/browser/customEditor.contribution.js';

@@ -785,6 +785,7 @@ export class QuickInputController extends Disposable {
 		ui.countContainer.style.display = visibilities.count ? '' : 'none';
 		ui.okContainer.style.display = visibilities.ok ? '' : 'none';
 		ui.customButtonContainer.style.display = visibilities.customButton ? '' : 'none';
+		ui.widget.style.display = visibilities.widget ? '' : 'none';
 		ui.message.style.display = visibilities.message ? '' : 'none';
 		ui.progressBar.getContainer().style.display = visibilities.progressBar ? '' : 'none';
 		ui.list.displayed = !!visibilities.list;

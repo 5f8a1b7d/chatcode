@@ -33,6 +33,7 @@ import { IChatRequestPasteVariableEntry, IChatRequestVariableEntry, isImageVaria
 import { chatVariableLeader } from '../../../../common/requestParser/chatParserTypes.js';
 import { IDynamicVariable } from '../../../../common/attachments/chatVariables.js';
 import { IChatPasteTarget, IChatPasteTargetService } from '../../../chat.js';
+import { formatAttachmentNumberReference } from '../../../../../latent/common/attachmentNumbers.js';
 import { chatInputSchemes, isChatInputModel, ChatConfiguration } from '../../../../common/constants.js';
 import { cleanupOldImages, createFileForMedia, resizeImage } from '../../../chatImageUtils.js';
 
@@ -457,6 +458,7 @@ export class PasteTextProvider implements DocumentPasteEditProvider {
 		}
 		const artifact = hasRicherPaste ? undefined : createPastedTextArtifact(textdata, target.attachments, {
 			content: markdown,
+			attachmentNumber: target.nextAttachmentNumber,
 			minLength: this.configurationService.getValue<number>(ChatConfiguration.PasteAsAttachmentThreshold, { resource: model.uri }),
 		});
 		if (artifact) {
@@ -511,6 +513,8 @@ export function createPastedTextArtifact(
 		readonly content?: string;
 		/** Character count the paste must exceed to become an attachment. */
 		readonly minLength?: number;
+		/** Number assigned by the destination input's context model. */
+		readonly attachmentNumber?: number;
 	},
 ): { readonly attachment: IChatRequestPasteVariableEntry; readonly referenceText: string } | undefined {
 	const trimmed = text.trim();
@@ -539,8 +543,14 @@ export function createPastedTextArtifact(
 	});
 
 	return {
-		attachment,
-		referenceText: `${chatVariableLeader}attachment:${name}`,
+		attachment: options?.attachmentNumber === undefined ? attachment : {
+			...attachment,
+			attachmentNumber: options.attachmentNumber,
+			attachmentMimeType: content ? 'text/markdown' : Mimes.text,
+		},
+		referenceText: options?.attachmentNumber === undefined
+			? `${chatVariableLeader}attachment:${name}`
+			: formatAttachmentNumberReference(options.attachmentNumber, content ? 'text/markdown' : Mimes.text),
 	};
 }
 

@@ -40,6 +40,7 @@ import { IChatContextService } from '../contextContrib/chatContextService.js';
 import { ChatImplicitContext, ChatImplicitContexts } from './chatImplicitContext.js';
 import { IBrowserViewWorkbenchService } from '../../../browserView/common/browserView.js';
 import { BrowserViewUri } from '../../../../../platform/browserView/common/browserViewUri.js';
+import { formatAttachmentNumberName } from '../../../latent/common/attachmentNumbers.js';
 
 export function isImplicitContextAlreadyAttached(attachments: readonly IChatRequestVariableEntry[], targetUri: URI | undefined, targetRange: IRange | undefined, targetHandle: number | undefined): boolean {
 	return attachments.some(attachment => {
@@ -198,6 +199,12 @@ export class ImplicitContextAttachmentWidget extends Disposable {
 			}));
 		}
 
+		const numbering = this.attachmentModel.numbering; // Latent
+		const implicitEntry = numbering && context.toBaseEntries()[0];
+		const attachmentNumber = implicitEntry ? numbering.numberImplicitContext(implicitEntry, this.attachmentModel.attachments).attachmentNumber : undefined;
+		if (attachmentNumber !== undefined) {
+			dom.append(contextNode, dom.$('span.chat-attached-context-attachment-number', undefined, formatAttachmentNumberName(attachmentNumber, '')));
+		}
 		const label = this.renderDisposables.add(this.resourceLabels.create(contextNode, { supportIcons: true }));
 
 		let title: string | undefined;

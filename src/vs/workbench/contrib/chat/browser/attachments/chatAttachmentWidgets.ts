@@ -73,6 +73,7 @@ import { IChatContentReference } from '../../common/chatService/chatService.js';
 import { buildOpenSessionLinkForChatResource } from '../../../../../platform/agentHost/common/openSessionLink.js';
 import { coerceImageBuffer } from '../../common/chatImageExtraction.js';
 import { ChatConfiguration } from '../../common/constants.js';
+import { formatAttachmentNumberName } from '../../../latent/common/attachmentNumbers.js';
 import { getImageAttachmentLimit, isPastedTextArtifact, IChatRequestPasteVariableEntry, IChatRequestVariableEntry, IBrowserViewVariableEntry, IChatRequestChatReferenceVariableEntry, IChatRequestTranscriptContextVariableEntry, IElementVariableEntry, INotebookOutputVariableEntry, IPromptFileVariableEntry, IPromptTextVariableEntry, ISCMHistoryItemVariableEntry, OmittedState, PromptFileVariableKind, ChatRequestToolReferenceEntry, ISCMHistoryItemChangeVariableEntry, ISCMHistoryItemChangeRangeVariableEntry, ITerminalVariableEntry, isStringVariableEntry, resolveChatContextIcon, ChatContextIconPath } from '../../common/attachments/chatVariableEntries.js';
 import { ILanguageModelChatMetadataAndIdentifier, ILanguageModelsService, isAutoLanguageModel } from '../../common/languageModels.js';
 import { ILanguageModelToolsService, isToolSet } from '../../common/tools/languageModelToolsService.js';
@@ -92,6 +93,40 @@ const commonHoverOptions: Partial<IHoverOptions> = {
 const commonHoverLifecycleOptions: IHoverLifecycleOptions = {
 	groupId: 'chat-attachments',
 };
+
+const TEXT_ATTACHMENT_HOVER_MAX_LINES = 12;
+const TEXT_ATTACHMENT_HOVER_MAX_CHARACTERS = 2_000;
+
+/** Returns a compact, escaped preview for text-backed context pills. */
+export function getTextAttachmentHoverContent(attachment: IChatRequestVariableEntry): IMarkdownString | undefined {
+	if (attachment.kind !== 'generic' && !isStringVariableEntry(attachment)) {
+		return undefined;
+	}
+	if (attachment.tooltip) {
+		return attachment.tooltip;
+	}
+	if (typeof attachment.value !== 'string' || !attachment.value.trim()) {
+		return undefined;
+	}
+
+	const lines = attachment.value.split(/\r?\n/);
+	let preview = lines.slice(0, TEXT_ATTACHMENT_HOVER_MAX_LINES).join('\n');
+	let truncated = lines.length > TEXT_ATTACHMENT_HOVER_MAX_LINES;
+	if (preview.length > TEXT_ATTACHMENT_HOVER_MAX_CHARACTERS) {
+		preview = preview.slice(0, TEXT_ATTACHMENT_HOVER_MAX_CHARACTERS);
+		truncated = true;
+	}
+	preview = preview.trimEnd();
+	if (!preview) {
+		return undefined;
+	}
+
+	const hover = new MarkdownString().appendText(preview);
+	if (truncated) {
+		hover.appendMarkdown('\n\n…');
+	}
+	return hover;
+}
 
 const KEY_ELEMENT_HOVER_COMPUTED_STYLE_PROPERTIES = [
 	'display',
@@ -132,6 +167,9 @@ abstract class AbstractChatAttachmentWidget extends Disposable {
 		super();
 		this.element = dom.append(container, $('.chat-attached-context-attachment.show-file-icons'));
 		this.attachClearButton();
+		if (attachment.attachmentNumber !== undefined) {
+			dom.append(this.element, $('span.chat-attached-context-attachment-number', undefined, formatAttachmentNumberName(attachment.attachmentNumber, '')));
+		}
 		this.label = contextResourceLabels.create(this.element, { supportIcons: true, hoverTargetOverride: this.element });
 		this._register(this.label);
 		this.element.tabIndex = 0;
@@ -947,9 +985,11 @@ export class DefaultChatAttachmentWidget extends AbstractChatAttachmentWidget {
 			}));
 		}
 
-		// Setup tooltip hover for string context attachments
-		if ((isStringVariableEntry(attachment) || attachment.kind === 'generic') && attachment.tooltip) {
-			this._setupTooltipHover(attachment.tooltip);
+		// Text-backed context survives provider round-trips as its value even when
+		// provider-specific tooltip metadata does not, so derive a safe preview.
+		const hoverContent = getTextAttachmentHoverContent(attachment);
+		if (hoverContent) {
+			this._setupTooltipHover(hoverContent);
 		}
 
 		if (resource) {

@@ -16,6 +16,7 @@ import { IChatAttachmentResolveService } from './chatAttachmentResolveService.js
 import { CancellationToken } from '../../../../../base/common/cancellation.js';
 import { equals } from '../../../../../base/common/objects.js';
 import { Iterable } from '../../../../../base/common/iterator.js';
+import type { ChatAttachmentNumbering } from '../../../latent/browser/attachmentNumbering.js';
 
 export interface IChatAttachmentChangeEvent {
 	readonly deleted: readonly string[];
@@ -26,6 +27,8 @@ export interface IChatAttachmentChangeEvent {
 export class ChatAttachmentModel extends Disposable {
 
 	private readonly _attachments = new Map<string, IChatRequestVariableEntry>();
+	/** Latent: Attachment Numbers, set only by inputs that opt in (see FORK.md). */
+	numbering: ChatAttachmentNumbering | undefined;
 	private readonly _fileWatchers = this._register(new DisposableMap<IChatRequestFileEntry['id'], IDisposable>());
 
 	private _onDidChange = this._register(new Emitter<IChatAttachmentChangeEvent>());
@@ -132,8 +135,9 @@ export class ChatAttachmentModel extends Disposable {
 			}
 		}
 
-		for (const item of upsert) {
+		for (let item of upsert) {
 			const oldItem = this._attachments.get(item.id);
+			item = this.numbering?.numberAttachment(item, oldItem) ?? item; // Latent
 			if (!oldItem) {
 				this._attachments.set(item.id, item);
 				added.push(item);

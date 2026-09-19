@@ -9,7 +9,7 @@ import { EditorInputCapabilities, Verbosity, GroupIdentifier, ISaveOptions, IRev
 import { isEqual } from '../../../base/common/resources.js';
 import { ConfirmResult } from '../../../platform/dialogs/common/dialogs.js';
 import { IMarkdownString } from '../../../base/common/htmlContent.js';
-import { IDisposable } from '../../../base/common/lifecycle.js';
+import { IDisposable, toDisposable } from '../../../base/common/lifecycle.js';
 import { ThemeIcon } from '../../../base/common/themables.js';
 
 export interface IEditorCloseHandler {
@@ -296,7 +296,19 @@ export abstract class EditorInput extends AbstractEditorInput {
 	 * a string with a message to show to the user if the editor cannot be
 	 * moved.
 	 */
+	private readonly moveGuards = new Set<(source: GroupIdentifier, target: GroupIdentifier) => true | string>();
+
+	/** Lets an owner of per-group editor state prevent a destructive merge. */
+	registerMoveGuard(guard: (source: GroupIdentifier, target: GroupIdentifier) => true | string): IDisposable {
+		this.moveGuards.add(guard);
+		return toDisposable(() => this.moveGuards.delete(guard));
+	}
+
 	canMove(sourceGroup: GroupIdentifier, targetGroup: GroupIdentifier): true | string {
+		for (const guard of this.moveGuards) {
+			const result = guard(sourceGroup, targetGroup);
+			if (result !== true) { return result; }
+		}
 		return true;
 	}
 

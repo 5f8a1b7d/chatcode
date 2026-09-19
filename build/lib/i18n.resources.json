@@ -191,6 +191,30 @@
 			"project": "vscode-workbench"
 		},
 		{
+			"name": "vs/workbench/contrib/latent",
+			"project": "vscode-workbench"
+		},
+		{
+			"name": "vs/workbench/contrib/latentSelection",
+			"project": "vscode-workbench"
+		},
+		{
+			"name": "vs/platform/latentSelection",
+			"project": "vscode-workbench"
+		},
+		{
+			"name": "vs/platform/latentFloatingWindow",
+			"project": "vscode-workbench"
+		},
+		{
+			"name": "vs/platform/latentRuntime",
+			"project": "vscode-workbench"
+		},
+		{
+			"name": "vs/latentRuntime",
+			"project": "vscode-workbench"
+		},
+		{
 			"name": "vs/workbench/contrib/quickaccess",
 			"project": "vscode-workbench"
 		},

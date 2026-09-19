@@ -26,6 +26,10 @@ export class ChatWidgetPasteTarget implements IChatPasteTarget {
 		return this.widget.attachmentModel.attachments;
 	}
 
+	get nextAttachmentNumber(): number | undefined {
+		return this.widget.attachmentModel.numbering?.nextNumber; // Latent
+	}
+
 	get inlineReferences(): readonly IDynamicVariable[] {
 		return getDynamicVariablesForWidget(this.widget);
 	}

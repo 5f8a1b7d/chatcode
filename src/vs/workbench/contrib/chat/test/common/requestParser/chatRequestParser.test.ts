@@ -105,6 +105,15 @@ suite('ChatRequestParser', () => {
 		});
 	});
 
+	test('host attachment references preserve numeric display tokens and expand the model prompt', () => {
+		parser = instantiationService.createInstance(ChatRequestParser);
+		const result = parser.parseChatRequest(testSessionUri, 'compare #1:text/plain and #3:image/png', ChatAgentLocation.Chat, { attachmentReferences: [
+			{ id: 'file', range: new Range(1, 9, 1, 22), data: undefined, isAttachmentReference: true, promptText: '[#1: a.md]' },
+			{ id: 'selection', range: new Range(1, 27, 1, 39), data: undefined, isAttachmentReference: true, promptText: '[#3: selection]' },
+		] });
+		assert.deepStrictEqual({ display: result.text, prompt: getPromptText(result).message }, { display: 'compare #1:text/plain and #3:image/png', prompt: 'compare [#1: a.md] and [#3: selection]' });
+	});
+
 	test('dynamic variable prompt text remaps surrounding variable ranges', () => {
 		const displayText = 'microsoft/vscode#334061';
 		const url = 'https://github.com/microsoft/vscode/issues/334061';

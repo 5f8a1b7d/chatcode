@@ -79,6 +79,7 @@ interface ISlashCommandWidgetArgs {
 
 export interface IDecorationWidgetArgs {
 	title?: string;
+	attachmentPreview?: string;
 }
 
 export class ChatMarkdownDecorationsRenderer extends Disposable {
@@ -131,6 +132,10 @@ export class ChatMarkdownDecorationsRenderer extends Disposable {
 							'';
 
 		const args: IDecorationWidgetArgs = { title };
+		if (part instanceof ChatRequestDynamicVariablePart && part.isAttachmentReference && typeof part._meta?.attachmentPreview === 'string') {
+			args.title = part.fullName;
+			args.attachmentPreview = part._meta.attachmentPreview;
+		}
 		const text = part.text;
 		return `[${text}](${decorationRefUrl}?${encodeURIComponent(JSON.stringify(args))})`;
 	}
@@ -268,7 +273,19 @@ export class ChatMarkdownDecorationsRenderer extends Disposable {
 	private renderResourceWidget(name: string, args: IDecorationWidgetArgs | undefined, store: DisposableStore): HTMLElement {
 		const container = dom.$('span.chat-resource-widget');
 		const alias = dom.$('span', undefined, name);
-		if (args?.title) {
+		if (args?.attachmentPreview !== undefined) {
+			const hover = store.add(this.hoverService.setupManagedHover(getDefaultHoverDelegate('element'), container, `${args.title ?? name}\n\n${args.attachmentPreview}`));
+			container.tabIndex = 0;
+			container.setAttribute('role', 'button');
+			container.setAttribute('aria-label', args.title ?? name);
+			store.add(dom.addDisposableListener(container, dom.EventType.CLICK, event => {
+				dom.EventHelper.stop(event, true);
+				hover.show(true);
+			}));
+			store.add(dom.addDisposableListener(container, dom.EventType.KEY_DOWN, event => {
+				if (event.key === 'Enter' || event.key === ' ') { dom.EventHelper.stop(event, true); hover.show(true); }
+			}));
+		} else if (args?.title) {
 			store.add(this.hoverService.setupManagedHover(getDefaultHoverDelegate('element'), container, args.title));
 		}
 

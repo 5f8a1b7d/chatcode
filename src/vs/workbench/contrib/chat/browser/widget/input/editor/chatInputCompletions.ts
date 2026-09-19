@@ -54,6 +54,7 @@ import { IChatRequestVariableEntry } from '../../../../common/attachments/chatVa
 import { IDynamicVariable, toAttachedContextDynamicVariable } from '../../../../common/attachments/chatVariables.js';
 import { ChatAgentLocation, ChatModeKind, isSupportedChatFileScheme } from '../../../../common/constants.js';
 import { isToolSet } from '../../../../common/tools/languageModelToolsService.js';
+import { getAttachmentNumberCompletion } from '../../../../../latent/browser/attachmentNumbering.js';
 import { IChatSessionsService, isAgentHostTarget } from '../../../../common/chatSessionsService.js';
 import { ICustomizationHarnessService } from '../../../../common/customizationHarnessService.js';
 import { matchesSessionType } from '../../../../common/promptSyntax/service/promptsService.js';
@@ -862,7 +863,8 @@ registerAction2(StartParameterizedPromptAction);
 class ReferenceArgument {
 	constructor(
 		readonly widget: IChatWidget,
-		readonly variable: IDynamicVariable
+		readonly variable: IDynamicVariable,
+		readonly attachment?: IChatRequestVariableEntry,
 	) { }
 }
 
@@ -904,14 +906,17 @@ class BuiltinDynamicCompletions extends Disposable {
 			const typedLeader = range.varWord?.word?.charAt(0) === chatAgentLeader ? chatAgentLeader : chatVariableLeader;
 			const typedWord = getCompletionRangeWord(range) ?? typedLeader;
 			const suggestOptions = widget.inputEditor.getOption(EditorOption.suggest);
-			const suggestions = coalesce(widget.attachmentModel.attachments
-				.filter(attachment => !attachment.range)
+			const numbering = widget.attachmentModel.numbering; // Latent
+			const suggestions = coalesce((numbering ? widget.input.getAttachedAndImplicitContext().asArray() : widget.attachmentModel.attachments)
+				.filter(attachment => !attachment.range || (!!numbering && attachment.attachmentNumber !== undefined))
 				.map((attachment): CompletionItem | undefined => {
-					const match = getAttachedContextCompletionMatch(typedWord, typedLeader, attachment.name, attachment.kind, suggestOptions);
+					const numbered = numbering && typedLeader === chatVariableLeader ? getAttachmentNumberCompletion(attachment) : undefined;
+					const attachmentLabel = numbered?.label ?? attachment.name;
+					const match = getAttachedContextCompletionMatch(typedWord, typedLeader, attachmentLabel, attachment.kind, suggestOptions);
 					if (!match) {
 						return undefined;
 					}
-					const text = `${typedLeader}attachment:${attachment.name}`;
+					const text = numbered?.text ?? `${typedLeader}attachment:${attachment.name}`;
 					const referenceRange = {
 						startLineNumber: range.replace.startLineNumber,
 						startColumn: range.replace.startColumn,
@@ -919,7 +924,7 @@ class BuiltinDynamicCompletions extends Disposable {
 						endColumn: range.replace.startColumn + text.length
 					};
 					return {
-						label: { label: attachment.name, description: localize('attachedContext', 'Attached context') },
+						label: { label: attachmentLabel, description: localize('attachedContext', 'Attached context') },
 						filterText: match.filterText,
 						insertText: range.varWord?.endColumn === range.replace.endColumn ? `${text} ` : text,
 						range,
@@ -932,7 +937,7 @@ class BuiltinDynamicCompletions extends Disposable {
 						command: {
 							id: BuiltinDynamicCompletions.addReferenceCommand,
 							title: '',
-							arguments: [new ReferenceArgument(widget, toAttachedContextDynamicVariable(attachment, referenceRange))]
+							arguments: [new ReferenceArgument(widget, toAttachedContextDynamicVariable(attachment, referenceRange), numbered ? attachment : undefined)]
 						}
 					};
 				}));
@@ -1327,6 +1332,9 @@ class BuiltinDynamicCompletions extends Disposable {
 
 	private cmdAddReference(arg: ReferenceArgument) {
 		// invoked via the completion command
+		if (arg.attachment) {
+			arg.widget.attachmentModel.addContext(arg.attachment);
+		}
 		arg.widget.getContrib<ChatDynamicVariableModel>(ChatDynamicVariableModel.ID)?.addReference(arg.variable);
 	}
 }

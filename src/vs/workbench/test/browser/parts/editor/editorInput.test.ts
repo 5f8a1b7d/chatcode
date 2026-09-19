@@ -77,6 +77,14 @@ suite('EditorInput', () => {
 		disposables.clear();
 	});
 
+	test('move guards retain independent group state and can be removed', () => {
+		const input = disposables.add(new TestEditorInput(testResource, 'move-guard'));
+		const guard = disposables.add(input.registerMoveGuard((source, target) => source === 1 && target === 2 ? 'Draft collision' : true));
+		assert.deepStrictEqual([input.canMove(1, 2), input.canMove(2, 1)], ['Draft collision', true]);
+		guard.dispose();
+		assert.strictEqual(input.canMove(1, 2), true);
+	});
+
 	class MyEditorInput extends EditorInput {
 		readonly resource = undefined;
 
