@@ -16,12 +16,14 @@ import { IWorkbenchContribution } from '../../../common/contributions.js';
 export interface ILatentDerivativeProductConfiguration {
 	/** Hides local model configuration (Provider Manager, custom providers, credentials, token plans). */
 	readonly hideProviderConfiguration?: boolean;
+	/** Optional chat participant selected by a derivative's per-tab composer. */
+	readonly defaultComposerAgentId?: string;
 	/** Base URL of the derivative's server; consumed by the derivative's own extensions. */
 	readonly serverUrl?: string;
 	readonly [key: string]: unknown;
 }
 
-function derivativeConfiguration(productService: IProductService): ILatentDerivativeProductConfiguration | undefined {
+export function getLatentDerivativeConfiguration(productService: IProductService): ILatentDerivativeProductConfiguration | undefined {
 	const value = (productService as IProductService & { readonly latentPrivate?: unknown }).latentPrivate;
 	return typeof value === 'object' && value !== null ? value as ILatentDerivativeProductConfiguration : undefined;
 }
@@ -46,7 +48,7 @@ export class LatentProductContribution extends Disposable implements IWorkbenchC
 		@ILogService private readonly logService: ILogService,
 	) {
 		super();
-		const configuration = derivativeConfiguration(productService);
+		const configuration = getLatentDerivativeConfiguration(productService);
 		LatentDerivativeBuildContext.bindTo(contextKeyService).set(!!configuration);
 		LatentProviderConfigurationHiddenContext.bindTo(contextKeyService).set(configuration?.hideProviderConfiguration === true);
 		if (configuration) {
@@ -64,4 +66,4 @@ export class LatentProductContribution extends Disposable implements IWorkbenchC
 	}
 }
 
-CommandsRegistry.registerCommand('latent.product.derivativeConfiguration', (accessor: ServicesAccessor) => derivativeConfiguration(accessor.get(IProductService)));
+CommandsRegistry.registerCommand('latent.product.derivativeConfiguration', (accessor: ServicesAccessor) => getLatentDerivativeConfiguration(accessor.get(IProductService)));

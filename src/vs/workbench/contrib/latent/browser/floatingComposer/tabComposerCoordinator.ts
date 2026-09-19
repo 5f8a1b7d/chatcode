@@ -6,6 +6,8 @@ import { Disposable, DisposableMap, DisposableStore } from '../../../../../base/
 import { localize, localize2 } from '../../../../../nls.js';
 import { Action2, registerAction2 } from '../../../../../platform/actions/common/actions.js';
 import { IConfigurationService } from '../../../../../platform/configuration/common/configuration.js';
+import { IProductService } from '../../../../../platform/product/common/productService.js';
+import { getLatentDerivativeConfiguration } from '../latentProduct.js';
 import { createDecorator, IInstantiationService, ServicesAccessor } from '../../../../../platform/instantiation/common/instantiation.js';
 import { InstantiationType, registerSingleton } from '../../../../../platform/instantiation/common/extensions.js';
 import { IQuickInputService, IQuickPickItem } from '../../../../../platform/quickinput/common/quickInput.js';
@@ -31,7 +33,6 @@ import { IThread, IThreadService } from '../../common/threads.js';
 import { FloatingComposerHost } from './floatingComposerHost.js';
 
 const VISIBLE_KEY = 'latent.floatingComposer.visible';
-const STUDY_BUDDY_AGENT_ID = 'latentnote.studyBuddy.chat';
 
 export const IFloatingComposerService = createDecorator<IFloatingComposerService>('floatingComposerService');
 
@@ -107,6 +108,7 @@ class GroupComposer extends Disposable {
 		@IThreadService private readonly threadService: IThreadService,
 		@IChatService private readonly chatService: IChatService,
 		@IChatAgentService private readonly chatAgentService: IChatAgentService,
+		@IProductService private readonly productService: IProductService,
 		@IConfigurationService private readonly configurationService: IConfigurationService,
 		@ISideChatOpener private readonly sideChatOpener: ISideChatOpener,
 		@IQuickInputService private readonly quickInputService: IQuickInputService,
@@ -246,10 +248,11 @@ class GroupComposer extends Disposable {
 
 	private applyDefaultAgent(): void {
 		const widget = this.host.chatWidget;
-		const studyBuddyAgent = this.chatAgentService.getAgent(STUDY_BUDDY_AGENT_ID);
-		if (studyBuddyAgent && widget.lastSelectedAgent?.id !== studyBuddyAgent.id) {
+		const agentId = getLatentDerivativeConfiguration(this.productService)?.defaultComposerAgentId;
+		const agent = agentId ? this.chatAgentService.getAgent(agentId) : undefined;
+		if (agent && widget.lastSelectedAgent?.id !== agent.id) {
 			widget.input.setChatMode(ChatModeKind.Ask);
-			widget.lastSelectedAgent = studyBuddyAgent;
+			widget.lastSelectedAgent = agent;
 		}
 	}
 
