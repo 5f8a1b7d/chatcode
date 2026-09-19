@@ -7,7 +7,7 @@ import { IFileService } from '../../../../../../platform/files/common/files.js';
 import { ISharedWebContentExtractorService } from '../../../../../../platform/webContentExtractor/common/webContentExtractor.js';
 import { ChatAttachmentModel } from '../../../browser/attachments/chatAttachmentModel.js';
 import { IChatAttachmentResolveService } from '../../../browser/attachments/chatAttachmentResolveService.js';
-import { IChatRequestVariableEntry } from '../../../common/attachments/chatVariableEntries.js';
+import { IChatRequestVariableEntry, IGenericChatRequestVariableEntry } from '../../../common/attachments/chatVariableEntries.js';
 
 suite('Chat attachment numbering', () => {
 	const store = ensureNoDisposablesAreLeakedInTestSuite();
@@ -35,7 +35,7 @@ suite('Chat attachment numbering', () => {
 			new class extends mock<ISharedWebContentExtractorService>() { },
 			new class extends mock<IChatAttachmentResolveService>() { },
 		));
-		const entry = (id: string): IChatRequestVariableEntry => ({ kind: 'generic', id, name: 'selection', value: id });
+		const entry = (id: string): IGenericChatRequestVariableEntry => ({ kind: 'generic', id, name: 'selection', value: id });
 		const implicit = model.getNumberedImplicitContext(entry('implicit'));
 		model.addContext(entry('first'), entry('second'));
 		model.updateContext([], [{ ...entry('second'), value: 'updated' }]);
