@@ -1,24 +1,12 @@
 /* eslint-disable header/header */
 import { promises as fs } from 'fs';
 import { join, resolve } from 'path';
+import { IRuntimeTool, IRuntimeToolContext } from '../../../platform/latentRuntime/common/runtimePlugin.js';
 
-export interface IToolDefinition {
-	readonly name: string;
-	readonly description: string;
-	readonly parameters: object;
-}
-
-export interface IToolContext {
-	readonly workingDirectory: string;
-	readonly recall: (query: string) => Promise<string>;
-	readonly memoryWrite: (target: 'memory' | 'user', content: string) => Promise<string>;
-	readonly artifact: (name: string, content: string, mimeType: string) => Promise<string>;
-}
-
-export type ToolRunner = (args: Record<string, unknown>, context: IToolContext) => Promise<string>;
+export type IToolContext = IRuntimeToolContext;
 
 /** Built-in bot tools; every call passes through the authorization scope first. */
-export const builtinTools: Record<string, { definition: IToolDefinition; run: ToolRunner }> = {
+export const builtinTools: Record<string, IRuntimeTool> = {
 	read_file: {
 		definition: { name: 'read_file', description: 'Read a UTF-8 text file relative to the working directory.', parameters: { type: 'object', properties: { path: { type: 'string' } }, required: ['path'] } },
 		run: async (args, context) => (await fs.readFile(resolveInside(context.workingDirectory, String(args.path)), 'utf8')).slice(0, 100_000),
@@ -56,6 +44,36 @@ export const builtinTools: Record<string, { definition: IToolDefinition; run: To
 		run: (args, context) => context.artifact(String(args.name), String(args.content ?? ''), typeof args.mimeType === 'string' ? args.mimeType : 'text/plain'),
 	},
 };
+
+/** Model-facing function names only allow `[A-Za-z0-9_-]`; scope keys such as `zotero.search` are mapped. */
+export function wireToolName(name: string): string {
+	return name.replace(/[^A-Za-z0-9_-]/g, '_').slice(0, 64);
+}
+
+/** Built-in tools plus tools contributed by runtime plugins (`latent.botTools`). */
+export class ToolRegistry {
+	private readonly contributed = new Map<string, IRuntimeTool>();
+
+	register(tool: IRuntimeTool): void {
+		if (builtinTools[tool.definition.name]) {
+			throw new Error(`Tool ${tool.definition.name} is built in and cannot be replaced.`);
+		}
+		this.contributed.set(tool.definition.name, tool);
+	}
+
+	unregister(name: string): void {
+		this.contributed.delete(name);
+	}
+
+	all(): IRuntimeTool[] {
+		return [...Object.values(builtinTools), ...this.contributed.values()];
+	}
+
+	/** Resolves a model-facing function name back to its tool. */
+	byWireName(wireName: string): IRuntimeTool | undefined {
+		return this.all().find(tool => wireToolName(tool.definition.name) === wireName);
+	}
+}
 
 function resolveInside(root: string, relative: string): string {
 	const target = resolve(root, relative);

@@ -32,8 +32,22 @@ export function globMatch(pattern: string, value: string): boolean {
 	return new RegExp(`^${expression}$`).test(value);
 }
 
+/** Path globs also match the folder a `folder/**` pattern names, so `cwd: "experiments"` fits `experiments/**`. */
+function pathMatch(pattern: string, path: string): boolean {
+	return globMatch(pattern, path) || (pattern.endsWith('/**') && path === pattern.slice(0, -3));
+}
+
 function normalizePath(value: string): string {
 	return value.replace(/\\/g, '/').replace(/^\.\//, '');
+}
+
+/**
+ * Splits an `allowTools` entry into the tool pattern and an optional path qualifier,
+ * so a scope can say `write_file paper/**` (tool allowed only for paths under `paper/`).
+ */
+function parseToolEntry(entry: string): { readonly tool: string; readonly path?: string } {
+	const match = /^(?<tool>\S+)\s+(?<path>\S.*)$/.exec(entry.trim());
+	return match?.groups ? { tool: match.groups.tool, path: normalizePath(match.groups.path.trim()) } : { tool: entry.trim() };
 }
 
 /**
@@ -41,17 +55,22 @@ function normalizePath(value: string): string {
  * Anything outside the scope needs an approval; the caller decides how to ask.
  */
 export function authorizeToolCall(scope: IToolAuthorizationScope, tool: string, args: Record<string, unknown>): IAuthorizationDecision {
-	if (!scope.allowTools.some(pattern => globMatch(pattern, tool))) {
+	const entries = scope.allowTools.map(parseToolEntry).filter(entry => globMatch(entry.tool, tool));
+	if (!entries.length) {
 		return { allowed: false, reason: `tool ${tool} is not in allowTools` };
 	}
-	const path = typeof args.path === 'string' ? normalizePath(args.path) : undefined;
-	if (path !== undefined) {
-		if (path.startsWith('/') || path.startsWith('../') || path.includes('/../')) {
-			return { allowed: false, reason: `path ${path} leaves the working directory` };
-		}
-		if (!scope.allowPaths.some(pattern => globMatch(normalizePath(pattern), path))) {
+	const rawPath = typeof args.path === 'string' ? args.path : typeof args.cwd === 'string' ? args.cwd : undefined;
+	const path = rawPath !== undefined ? normalizePath(rawPath) : undefined;
+	if (path !== undefined && (path.startsWith('/') || path.startsWith('../') || path.includes('/../') || path === '..')) {
+		return { allowed: false, reason: `path ${path} leaves the working directory` };
+	}
+	const unqualified = entries.some(entry => entry.path === undefined);
+	if (unqualified) {
+		if (path !== undefined && !scope.allowPaths.some(pattern => pathMatch(normalizePath(pattern), path))) {
 			return { allowed: false, reason: `path ${path} is not in allowPaths` };
 		}
+	} else if (path === undefined || !entries.some(entry => pathMatch(entry.path!, path))) {
+		return { allowed: false, reason: `${tool} is only allowed for ${entries.map(entry => entry.path).join(', ')}` };
 	}
 	const url = typeof args.url === 'string' ? args.url : undefined;
 	if (url !== undefined) {

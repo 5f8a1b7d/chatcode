@@ -28,6 +28,19 @@ suite('Latent runtime tool authorization (P1-AS-021)', () => {
 		], [true, 'tool write_file is not in allowTools', 'path src/x.ts is not in allowPaths', 'path ../secrets leaves the working directory', true]);
 	});
 
+	test('path-qualified tool entries limit a tool to their paths', () => {
+		const qualified = { allowTools: ['read_file', 'write_file paper/**', 'terminal experiments/**', 'zotero.*'], allowPaths: ['**'], allowNetwork: [], autoApprove: true };
+		assert.deepStrictEqual([
+			authorizeToolCall(qualified, 'write_file', { path: 'paper/intro.tex' }).allowed,
+			authorizeToolCall(qualified, 'write_file', { path: 'experiments/run.py' }).reason,
+			authorizeToolCall(qualified, 'read_file', { path: 'experiments/run.py' }).allowed,
+			authorizeToolCall(qualified, 'terminal', { cwd: 'experiments/a', command: 'python run.py' }).allowed,
+			authorizeToolCall(qualified, 'terminal', { cwd: 'experiments', command: 'ls' }).allowed,
+			authorizeToolCall(qualified, 'terminal', { command: 'ls' }).reason,
+			authorizeToolCall(qualified, 'zotero.search', { query: 'x' }).allowed,
+		], [true, 'write_file is only allowed for paper/**', true, true, true, 'terminal is only allowed for experiments/**', true]);
+	});
+
 	test('network hosts follow allowNetwork', () => {
 		const wide = { ...scope, allowTools: ['http_fetch'] };
 		assert.deepStrictEqual([

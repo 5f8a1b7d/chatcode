@@ -4,7 +4,7 @@ import { ApprovalDecision, IBotConfig, IBotInput, IModelBinding, IRuntimeSession
 import { RuntimeDatabase } from '../runtimeDatabase.js';
 import { authorizeToolCall } from './authorization.js';
 import { ApprovalService } from './approvals.js';
-import { builtinTools, IToolContext } from './tools.js';
+import { IToolContext, ToolRegistry, wireToolName } from './tools.js';
 
 interface IWireMessage { role: 'system' | 'user' | 'assistant' | 'tool'; content: string | null; tool_call_id?: string; tool_calls?: { id: string; type: 'function'; function: { name: string; arguments: string } }[] }
 
@@ -15,6 +15,7 @@ export interface IBotRunResult {
 
 export interface IBotRunnerHost {
 	readonly approvals: ApprovalService;
+	readonly tools: ToolRegistry;
 	readonly modelBinding: (id: string) => IModelBinding | undefined;
 	readonly toolContext: (bot: IBotConfig, session: IRuntimeSessionRef) => IToolContext;
 	readonly onTurn: (session: IRuntimeSessionRef, turn: IRuntimeSessionTurn) => Promise<void>;
@@ -86,7 +87,7 @@ export class BotRunner {
 				...history.filter(turn => turn.role !== 'tool').map((turn): IWireMessage => ({ role: turn.role === 'assistant' ? 'assistant' : 'user', content: turn.text })),
 			];
 			const context = this.host.toolContext(bot, session);
-			const tools = Object.values(builtinTools).map(tool => ({ type: 'function' as const, function: { name: tool.definition.name, description: tool.definition.description, parameters: tool.definition.parameters } }));
+			const tools = this.host.tools.all().map(tool => ({ type: 'function' as const, function: { name: wireToolName(tool.definition.name), description: tool.definition.description, parameters: tool.definition.parameters } }));
 			let finalText = '';
 			for (let iteration = 0; iteration < 12; iteration++) {
 				const reply = await this.complete(binding, messages, tools);
@@ -97,7 +98,7 @@ export class BotRunner {
 				messages.push({ role: 'assistant', content: reply.text || null, tool_calls: reply.toolCalls.map(call => ({ id: call.id, type: 'function', function: { name: call.name, arguments: JSON.stringify(call.args) } })) });
 				for (const call of reply.toolCalls) {
 					const result = await this.executeTool(bot, session, call, context, input);
-					const toolTurn = await this.sessions.append(session.sessionId, 'tool', `${call.name}(${JSON.stringify(call.args).slice(0, 200)}) → ${result.slice(0, 500)}`);
+					const toolTurn = await this.sessions.append(session.sessionId, 'tool', `${this.host.tools.byWireName(call.name)?.definition.name ?? call.name}(${JSON.stringify(call.args).slice(0, 200)}) → ${result.slice(0, 500)}`);
 					await this.host.onTurn(session, toolTurn);
 					messages.push({ role: 'tool', tool_call_id: call.id, content: result.slice(0, 50_000) });
 				}
@@ -111,22 +112,25 @@ export class BotRunner {
 	}
 
 	private async executeTool(bot: IBotConfig, session: IRuntimeSessionRef, call: { id: string; name: string; args: Record<string, unknown> }, context: IToolContext, input: IBotInput): Promise<string> {
-		const tool = builtinTools[call.name];
+		const tool = this.host.tools.byWireName(call.name);
 		if (!tool) {
 			return `Error: unknown tool ${call.name}`;
 		}
-		const decision = authorizeToolCall(bot.toolAuthorizationScope, call.name, call.args);
-		if (!decision.allowed || !bot.toolAuthorizationScope.autoApprove) {
+		const name = tool.definition.name;
+		const decision = authorizeToolCall(bot.toolAuthorizationScope, name, call.args);
+		const floor = tool.approvalFloor?.(call.args);
+		if (!decision.allowed || !bot.toolAuthorizationScope.autoApprove || floor) {
+			const reason = decision.reason ?? floor;
 			const verdict: ApprovalDecision | 'timeout' = await this.host.approvals.request({
 				botId: bot.id,
 				sessionId: session.sessionId,
-				tool: call.name,
-				summary: `${call.name} ${JSON.stringify(call.args).slice(0, 200)}${decision.reason ? ` — ${decision.reason}` : ''}`,
+				tool: name,
+				summary: `${name} ${JSON.stringify(call.args).slice(0, 200)}${reason ? ` — ${reason}` : ''}`,
 				gatewayId: input.gatewayId,
 				chatId: input.chatId,
 			});
 			if (verdict === 'deny' || verdict === 'timeout') {
-				return `Denied: ${call.name} was not approved (${verdict === 'timeout' ? 'no answer within the approval window' : 'denied by the user'})${decision.reason ? `; ${decision.reason}` : ''}.`;
+				return `Denied: ${name} was not approved (${verdict === 'timeout' ? 'no answer within the approval window' : 'denied by the user'})${reason ? `; ${reason}` : ''}.`;
 			}
 		}
 		try {

@@ -3,6 +3,7 @@ import { Emitter, Event } from '../../../../../base/common/event.js';
 import { Disposable } from '../../../../../base/common/lifecycle.js';
 import { createDecorator } from '../../../../../platform/instantiation/common/instantiation.js';
 import { ILatentRuntimeService } from '../../../../../platform/latentRuntime/common/latentRuntime.js';
+import { IMemoryComparisonEntry, IRuntimePluginRecord, IRuntimePluginState } from '../../../../../platform/latentRuntime/common/runtimePlugin.js';
 import { ApprovalDecision, IArtifact, IBotConfig, IBotInput, ICapabilitySource, IGatewayConfig, IIndexedTurn, IJobExecution, IMemoryAdapterState, IMemorySnapshot, IMemoryWriteOp, IMemoryWriteResult, IModelBinding, IPairingCode, IRecallHit, IRecallOptions, IRuntimeApprovalRequest, IRuntimeCapability, IRuntimeSessionRef, IRuntimeSessionTurn, IRuntimeState, IScheduledJob, RuntimeMethods, RuntimeNotification } from '../../../../../platform/latentRuntime/common/runtimeProtocol.js';
 
 export const IManagedRuntimeService = createDecorator<IManagedRuntimeService>('latentManagedRuntimeService');
@@ -45,6 +46,15 @@ export interface IManagedRuntimeService {
 	removeJob(id: string): Promise<void>;
 	runJobNow(id: string): Promise<{ sessionId: string } | undefined>;
 	listJobExecutions(jobId?: string): Promise<readonly IJobExecution[]>;
+	/** Queues a message in a gateway's delivery ledger. */
+	deliver(gatewayId: string, chatId: string, text: string): Promise<void>;
+	/** Stores a file produced outside a bot run (for example by an extension) with provenance. */
+	addArtifact(artifact: { sessionId?: string; botId: string; name: string; content?: string; contentBase64?: string; mimeType?: string }): Promise<IArtifact>;
+	compareMemoryAdapter(id: string): Promise<readonly IMemoryComparisonEntry[]>;
+	registerPlugin(record: IRuntimePluginRecord): Promise<IRuntimePluginState>;
+	listPlugins(): Promise<readonly IRuntimePluginState[]>;
+	/** Stores (or with an empty value deletes) a secret readable only by that plugin. */
+	setPluginSecret(pluginId: string, key: string, value: string | undefined): Promise<void>;
 }
 
 export class ManagedRuntimeService extends Disposable implements IManagedRuntimeService {
@@ -98,4 +108,10 @@ export class ManagedRuntimeService extends Disposable implements IManagedRuntime
 	async removeJob(id: string): Promise<void> { await this.runtime.call(RuntimeMethods.RemoveJob, { id }); }
 	runJobNow(id: string): Promise<{ sessionId: string } | undefined> { return this.runtime.call(RuntimeMethods.RunJobNow, { id }); }
 	listJobExecutions(jobId?: string): Promise<readonly IJobExecution[]> { return this.runtime.call(RuntimeMethods.ListJobExecutions, { jobId }); }
+	async deliver(gatewayId: string, chatId: string, text: string): Promise<void> { await this.runtime.call(RuntimeMethods.Deliver, { gatewayId, chatId, text }); }
+	addArtifact(artifact: { sessionId?: string; botId: string; name: string; content?: string; contentBase64?: string; mimeType?: string }): Promise<IArtifact> { return this.runtime.call(RuntimeMethods.AddArtifact, artifact); }
+	compareMemoryAdapter(id: string): Promise<readonly IMemoryComparisonEntry[]> { return this.runtime.call(RuntimeMethods.CompareMemoryAdapter, { id }); }
+	registerPlugin(record: IRuntimePluginRecord): Promise<IRuntimePluginState> { return this.runtime.call(RuntimeMethods.RegisterPlugin, record); }
+	listPlugins(): Promise<readonly IRuntimePluginState[]> { return this.runtime.call(RuntimeMethods.ListPlugins); }
+	async setPluginSecret(pluginId: string, key: string, value: string | undefined): Promise<void> { await this.runtime.call(RuntimeMethods.SetPluginSecret, { pluginId, key, value }); }
 }

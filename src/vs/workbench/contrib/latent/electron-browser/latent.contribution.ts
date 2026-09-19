@@ -53,6 +53,13 @@ import './floatingWindow/floatingWindow.contribution.js';
 import { RuntimeContribution } from '../browser/runtime/runtime.contribution.js';
 registerWorkbenchContribution2(RuntimeContribution.ID, RuntimeContribution, WorkbenchPhase.Eventually);
 
+// Managed runtime access for extensions (`latent.runtime.api.*`)
+import '../browser/runtime/runtimeApiCommands.js';
+
+// Product overrides of derivative builds: context keys and the optional workbench overlay
+import { LatentProductContribution } from '../browser/latentProduct.js';
+registerWorkbenchContribution2(LatentProductContribution.ID, LatentProductContribution, WorkbenchPhase.BlockRestore);
+
 // One-time copy of Study Buddy provider credentials to the Provider extension
 import { ProviderSecretMigrationContribution } from '../browser/migration/providerSecretMigration.js';
 registerWorkbenchContribution2(ProviderSecretMigrationContribution.ID, ProviderSecretMigrationContribution, WorkbenchPhase.Eventually);

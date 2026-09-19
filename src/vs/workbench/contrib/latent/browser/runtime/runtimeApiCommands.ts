@@ -1,0 +1,69 @@
+/* eslint-disable header/header */
+import { CommandsRegistry } from '../../../../../platform/commands/common/commands.js';
+import { IConfigurationService } from '../../../../../platform/configuration/common/configuration.js';
+import { ServicesAccessor } from '../../../../../platform/instantiation/common/instantiation.js';
+import { ApprovalDecision, IBotConfig, IBotInput, IGatewayConfig, IMemoryWriteOp, IModelBinding, IRecallOptions } from '../../../../../platform/latentRuntime/common/runtimeProtocol.js';
+import { IRuntimePluginRecord } from '../../../../../platform/latentRuntime/common/runtimePlugin.js';
+import { LatentSettings } from '../latentConfiguration.js';
+import { IManagedRuntimeService } from './managedRuntimeService.js';
+
+/**
+ * Extension-facing access to the Managed Runtime (spec 01 §4). Extensions call
+ * `latent.runtime.api.<name>` through `vscode.commands.executeCommand`; renderer
+ * code still reaches the runtime only through `IManagedRuntimeService` (P1-FR-101).
+ * Every call except `state` and `ensureStarted` fails while the runtime is stopped
+ * instead of starting it implicitly.
+ */
+type RuntimeApiHandler = (runtime: IManagedRuntimeService, ...args: never[]) => Promise<unknown>;
+
+const handlers: Record<string, RuntimeApiHandler> = {
+	listBots: runtime => runtime.listBots(),
+	upsertBot: (runtime, config: IBotConfig) => runtime.upsertBot(config),
+	removeBot: (runtime, id: string) => runtime.removeBot(id),
+	runBot: (runtime, botId: string, input: IBotInput) => runtime.runBot(botId, input),
+	listSessions: runtime => runtime.listSessions(),
+	getSessionTurns: (runtime, sessionId: string) => runtime.getSessionTurns(sessionId),
+	listApprovals: runtime => runtime.listApprovals(),
+	respondToApproval: (runtime, id: string, decision: ApprovalDecision) => runtime.respondToApproval(id, decision),
+	listGateways: runtime => runtime.listGateways(),
+	upsertGateway: (runtime, config: IGatewayConfig, secret?: string) => runtime.upsertGateway(config, secret),
+	removeGateway: (runtime, id: string) => runtime.removeGateway(id),
+	deliver: (runtime, gatewayId: string, chatId: string, text: string) => runtime.deliver(gatewayId, chatId, text),
+	setModelBinding: (runtime, id: string, binding: IModelBinding) => runtime.setModelBinding(id, binding),
+	recall: (runtime, query: string, options?: IRecallOptions) => runtime.recall(query, options),
+	memorySnapshot: runtime => runtime.memorySnapshot(),
+	memoryWrite: (runtime, op: IMemoryWriteOp) => runtime.memoryWrite(op),
+	memoryConfirm: (runtime, id: string, accept: boolean) => runtime.memoryConfirm(id, accept),
+	listMemoryAdapters: runtime => runtime.listMemoryAdapters(),
+	setMemoryAdapterEnabled: (runtime, id: string, enabled: boolean, secret?: string, baseUrl?: string) => runtime.setMemoryAdapterEnabled(id, enabled, secret, baseUrl),
+	compareMemoryAdapter: (runtime, id: string) => runtime.compareMemoryAdapter(id),
+	listArtifacts: (runtime, filter?: { sessionId?: string; botId?: string }) => runtime.listArtifacts(filter),
+	addArtifact: (runtime, artifact: { sessionId?: string; botId: string; name: string; content?: string; contentBase64?: string; mimeType?: string }) => runtime.addArtifact(artifact),
+	registerPlugin: (runtime, record: IRuntimePluginRecord) => runtime.registerPlugin(record),
+	listPlugins: runtime => runtime.listPlugins(),
+	setPluginSecret: (runtime, pluginId: string, key: string, value?: string) => runtime.setPluginSecret(pluginId, key, value),
+};
+
+CommandsRegistry.registerCommand('latent.runtime.api.state', async (accessor: ServicesAccessor) => {
+	const runtime = accessor.get(IManagedRuntimeService);
+	return runtime.getState().catch(() => ({ connected: false }));
+});
+
+CommandsRegistry.registerCommand('latent.runtime.api.ensureStarted', async (accessor: ServicesAccessor) => {
+	const runtime = accessor.get(IManagedRuntimeService);
+	if (!accessor.get(IConfigurationService).getValue<boolean>(LatentSettings.RuntimeEnabled)) {
+		throw new Error('The managed runtime is disabled (latent.runtime.enabled).');
+	}
+	return runtime.start();
+});
+
+for (const [name, handler] of Object.entries(handlers)) {
+	CommandsRegistry.registerCommand(`latent.runtime.api.${name}`, async (accessor: ServicesAccessor, ...args: never[]) => {
+		const runtime = accessor.get(IManagedRuntimeService);
+		const state = await runtime.getState().catch(() => undefined);
+		if (!state?.connected) {
+			throw new Error('The managed runtime is not running.');
+		}
+		return handler(runtime, ...args);
+	});
+}

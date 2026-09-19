@@ -26,7 +26,8 @@ export interface IRuntimeState {
 	readonly pendingApprovals: number;
 }
 
-export type GatewayPlatform = 'webhook' | 'telegram';
+/** Built-in platforms are `webhook` and `telegram`; runtime plugins add more (`latent.gatewayPlatforms`). */
+export type GatewayPlatform = string;
 
 export interface IGatewayConfig {
 	readonly id: string;
@@ -270,4 +271,10 @@ export const RuntimeMethods = {
 	RemoveJob: 'jobs.remove',
 	RunJobNow: 'jobs.runNow',
 	ListJobExecutions: 'jobs.executions',
+	Deliver: 'gateways.deliver',
+	AddArtifact: 'artifacts.add',
+	CompareMemoryAdapter: 'memory.adapters.compare',
+	RegisterPlugin: 'plugins.register',
+	ListPlugins: 'plugins.list',
+	SetPluginSecret: 'plugins.setSecret',
 } as const;

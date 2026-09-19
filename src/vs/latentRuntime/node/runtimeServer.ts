@@ -3,15 +3,18 @@ import { promises as fs } from 'fs';
 import { join } from 'path';
 import { JsonRpcError, JsonRpcErrorCodes } from '../../platform/latentRuntime/common/jsonRpc.js';
 import { ApprovalDecision, IBotConfig, IBotInput, ICapabilitySource, IGatewayConfig, IIndexedTurn, IMemoryWriteOp, IModelBinding, IRecallOptions, IRuntimeSessionRef, IRuntimeSessionTurn, IRuntimeState, IScheduledJob, RuntimeMethods, RuntimeNotification, RUNTIME_PROTOCOL_VERSION } from '../../platform/latentRuntime/common/runtimeProtocol.js';
+import { IInboundMessage, IRuntimePluginRecord } from '../../platform/latentRuntime/common/runtimePlugin.js';
 import { ArtifactStore } from './artifacts/artifactStore.js';
 import { ApprovalService } from './bots/approvals.js';
 import { BotRunner, SessionStore } from './bots/botRunner.js';
+import { ToolRegistry } from './bots/tools.js';
 import { SkillRegistry } from './capabilities/skills.js';
 import { GatewayRegistry } from './gateway/gatewayRegistry.js';
 import { JobScheduler } from './jobs/scheduler.js';
 import { isAdapterRecord, MemoryAdapterRegistry } from './memory/adapters.js';
 import { MemoryStore } from './memory/memoryStore.js';
 import { RecallIndex } from './memory/recallIndex.js';
+import { isPluginRecord, pluginSecretKey, RuntimePluginHost } from './plugins/runtimePlugins.js';
 import { JsonRpcServer } from './rpc/jsonRpcServer.js';
 import { JsonListStore } from './runtimeConfig.js';
 import { RuntimeDatabase } from './runtimeDatabase.js';
@@ -24,7 +27,7 @@ interface IRuntimeSettings {
 
 function isGatewayConfig(value: unknown): value is IGatewayConfig {
 	const candidate = value as Partial<IGatewayConfig>;
-	return typeof candidate === 'object' && candidate !== null && typeof candidate.id === 'string' && (candidate.platform === 'webhook' || candidate.platform === 'telegram') && typeof candidate.name === 'string' && typeof candidate.enabled === 'boolean' && Array.isArray(candidate.allowedSenders) && typeof candidate.options === 'object' && candidate.options !== null;
+	return typeof candidate === 'object' && candidate !== null && typeof candidate.id === 'string' && typeof candidate.platform === 'string' && /^[\w.-]+$/.test(candidate.platform) && typeof candidate.name === 'string' && typeof candidate.enabled === 'boolean' && Array.isArray(candidate.allowedSenders) && typeof candidate.options === 'object' && candidate.options !== null;
 }
 
 function isBotConfig(value: unknown): value is IBotConfig {
@@ -66,6 +69,9 @@ export class RuntimeServer {
 	private skills!: SkillRegistry;
 	private artifacts!: ArtifactStore;
 	private scheduler!: JobScheduler;
+	private pluginRecords!: JsonListStore<IRuntimePluginRecord>;
+	private plugins!: RuntimePluginHost;
+	private readonly tools = new ToolRegistry();
 	private readonly startedAt = Date.now();
 
 	constructor(private readonly home: string, token: string, private readonly writeLog: (message: string) => void) {
@@ -84,7 +90,8 @@ export class RuntimeServer {
 		this.jobs = new JsonListStore(this.home, 'jobs', isJob, invalid);
 		this.settings = new JsonListStore(this.home, 'settings', isSettings, invalid);
 		this.adapterRecords = new JsonListStore(this.home, 'memory-adapters', isAdapterRecord, invalid);
-		await Promise.all([this.gateways.load(), this.bots.load(), this.jobs.load(), this.settings.load(), this.adapterRecords.load()]);
+		this.pluginRecords = new JsonListStore(this.home, 'plugins', isPluginRecord, invalid);
+		await Promise.all([this.gateways.load(), this.bots.load(), this.jobs.load(), this.settings.load(), this.adapterRecords.load(), this.pluginRecords.load()]);
 		this.memory = new MemoryStore(this.home);
 		await this.memory.initialize();
 		this.recallIndex = new RecallIndex(this.database);
@@ -95,9 +102,14 @@ export class RuntimeServer {
 		this.sessions = new SessionStore(this.database);
 		this.runner = new BotRunner(this.sessions, {
 			approvals: this.approvals,
+			tools: this.tools,
 			modelBinding: id => this.modelBinding(id),
 			toolContext: (bot, session) => ({
 				workingDirectory: bot.workingDirectory ?? join(this.home, 'workspaces', bot.id),
+				botId: bot.id,
+				sessionId: session.sessionId,
+				runBot: (botId, input) => this.runBotById(botId, input, 'workbench'),
+				log: this.log,
 				recall: async query => (await this.recallIndex.recall(query, { k: 5 })).map(hit => hit.agentFormat).join('\n') || 'no results',
 				memoryWrite: async (target, content) => {
 					const result = await this.memory.write({ action: 'add', target, content });
@@ -124,9 +136,20 @@ export class RuntimeServer {
 			log: this.log,
 			onChange: () => this.publishState(),
 		});
+		this.plugins = new RuntimePluginHost(this.pluginRecords, {
+			gateways: this.gatewayRegistry,
+			tools: this.tools,
+			memoryAdapters: this.adapters,
+			secret: key => this.secrets.get(key),
+			modelBinding: id => this.modelBinding(id),
+			runBot: (botId, input) => this.runBotById(botId, input, 'workbench'),
+			deliver: (gatewayId, chatId, text) => this.gatewayRegistry.deliver(gatewayId, chatId, text),
+			log: this.log,
+			onDidChangeContributions: () => this.gatewayRegistry.apply(this.gateways.list()),
+		});
 		this.registerMethods();
 		await this.rpc.listen(socketPath);
-		await this.gatewayRegistry.apply(this.gateways.list());
+		await this.plugins.activateAll();
 		this.scheduler.start();
 		this.log(`listening on ${socketPath}`);
 	}
@@ -143,20 +166,30 @@ export class RuntimeServer {
 		}
 	}
 
+	private async runBotById(botId: string, input: IBotInput, origin: IRuntimeSessionRef['origin']): Promise<{ sessionId: string; text: string }> {
+		const bot = this.bots.get(botId);
+		if (!bot) {
+			throw new Error(`Unknown bot ${botId}`);
+		}
+		const result = await this.runner.run(bot, input, origin);
+		return { sessionId: result.session.sessionId, text: result.text };
+	}
+
 	private async onTurn(session: IRuntimeSessionRef, turn: IRuntimeSessionTurn): Promise<void> {
 		await this.recallIndex.index([{ sessionId: session.sessionId, seq: turn.seq, role: turn.role, blockType: turn.role === 'tool' ? 'tool_result' : 'text', text: turn.text, timestamp: turn.timestamp, harness: 'latent-runtime', workdir: this.home }]);
 		this.notify({ kind: 'sessionUpdated', session });
 	}
 
-	private async onGatewayMessage(message: { gatewayId: string; chatId: string; sender: string; text: string }, config: IGatewayConfig): Promise<void> {
+	private async onGatewayMessage(message: IInboundMessage, config: IGatewayConfig): Promise<void> {
 		this.notify({ kind: 'gatewayMessage', gatewayId: message.gatewayId, chatId: message.chatId, sender: message.sender, text: message.text });
-		const bot = config.botId ? this.bots.get(config.botId) : this.bots.list()[0];
+		const botId = message.botId ?? config.botId;
+		const bot = botId ? this.bots.get(botId) : this.bots.list()[0];
 		if (!bot) {
 			await this.gatewayRegistry.deliver(message.gatewayId, message.chatId, 'No bot is bound to this gateway yet.');
 			return;
 		}
 		await this.gatewayRegistry.adapter(message.gatewayId)?.sendTyping?.(message.chatId);
-		const existing = (await this.sessions.list()).find(session => session.title === `${message.gatewayId}:${message.chatId}`);
+		const existing = (await this.sessions.list()).find(session => session.title === `${message.gatewayId}:${message.chatId}` && session.botId === bot.id);
 		try {
 			const result = await this.runner.run(bot, { text: message.text, sessionId: existing?.sessionId, gatewayId: message.gatewayId, chatId: message.chatId, sender: message.sender }, 'gateway');
 			if (!existing) {
@@ -344,12 +377,41 @@ export class RuntimeServer {
 			const { id } = this.params(params, (value): value is { id: string } => isRecord(value) && typeof value.id === 'string', 'id required');
 			return this.scheduler.runNow(id);
 		});
+		// plugins (`latent.gatewayPlatforms`, `latent.botTools`, `latent.memoryAdapters`)
+		this.rpc.register(RuntimeMethods.ListPlugins, () => this.plugins.list());
+		this.rpc.register(RuntimeMethods.RegisterPlugin, params => this.plugins.register(this.params(params, isPluginRecord, 'id, absolute modulePath, and enabled required')));
+		this.rpc.register(RuntimeMethods.SetPluginSecret, async params => {
+			const { pluginId, key, value } = this.params(params, (value): value is { pluginId: string; key: string; value?: string } => isRecord(value) && typeof value.pluginId === 'string' && typeof value.key === 'string' && /^[\w.:-]+$/.test(value.key) && (value.value === undefined || typeof value.value === 'string'), 'pluginId and key required');
+			if (value) {
+				await this.secrets.set(pluginSecretKey(pluginId, key), value);
+			} else {
+				await this.secrets.delete(pluginSecretKey(pluginId, key));
+			}
+			return { ok: true };
+		});
+		this.rpc.register(RuntimeMethods.Deliver, async params => {
+			const { gatewayId, chatId, text } = this.params(params, (value): value is { gatewayId: string; chatId: string; text: string } => isRecord(value) && typeof value.gatewayId === 'string' && typeof value.chatId === 'string' && typeof value.text === 'string', 'gatewayId, chatId, and text required');
+			if (!this.gateways.get(gatewayId)) {
+				throw new JsonRpcError(JsonRpcErrorCodes.InvalidParams, `Unknown gateway ${gatewayId}`);
+			}
+			await this.gatewayRegistry.deliver(gatewayId, chatId, text);
+			return { queued: true };
+		});
+		this.rpc.register(RuntimeMethods.AddArtifact, params => {
+			const { sessionId, botId, name, content, contentBase64, mimeType } = this.params(params, (value): value is { sessionId?: string; botId: string; name: string; content?: string; contentBase64?: string; mimeType?: string } => isRecord(value) && typeof value.botId === 'string' && typeof value.name === 'string' && (typeof value.content === 'string' || typeof value.contentBase64 === 'string'), 'botId, name, and content required');
+			return this.artifacts.add(sessionId ?? 'workbench', botId, name, typeof contentBase64 === 'string' ? Buffer.from(contentBase64, 'base64') : content ?? '', mimeType ?? 'text/plain');
+		});
+		this.rpc.register(RuntimeMethods.CompareMemoryAdapter, async params => {
+			const { id } = this.params(params, (value): value is { id: string } => isRecord(value) && typeof value.id === 'string', 'id required');
+			return this.adapters.compare(id, await this.memory.snapshot());
+		});
 		this.rpc.register(RuntimeMethods.ListJobExecutions, params => this.scheduler.executions(isRecord(params) && typeof params.jobId === 'string' ? params.jobId : undefined));
 	}
 
 	async shutdown(): Promise<void> {
 		this.log('shutting down');
 		this.scheduler?.stop();
+		await this.plugins?.dispose();
 		await this.gatewayRegistry?.dispose();
 		await this.rpc.close();
 		await this.database?.close().catch(() => undefined);

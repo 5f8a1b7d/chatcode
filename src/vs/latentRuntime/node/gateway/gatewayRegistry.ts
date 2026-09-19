@@ -27,7 +27,25 @@ export class GatewayRegistry {
 	) { }
 
 	registerPlatform(platform: string, factory: GatewayAdapterFactory): void {
+		if (platform === 'webhook' || platform === 'telegram') {
+			throw new Error(`Gateway platform ${platform} is built in and cannot be replaced.`);
+		}
 		this.factories.set(platform, factory);
+	}
+
+	/** Removes a plugin platform and disconnects its adapters; they reconnect when the platform is registered again. */
+	async unregisterPlatform(platform: string): Promise<void> {
+		this.factories.delete(platform);
+		for (const [id, adapter] of this.adapters) {
+			if (adapter.config.platform === platform) {
+				await adapter.disconnect().catch(() => undefined);
+				this.adapters.delete(id);
+			}
+		}
+	}
+
+	hasPlatform(platform: string): boolean {
+		return this.factories.has(platform);
 	}
 
 	onMessage(handler: (message: IInboundMessage, config: IGatewayConfig) => Promise<void>): void {

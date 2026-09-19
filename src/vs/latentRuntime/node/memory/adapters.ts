@@ -1,13 +1,8 @@
 /* eslint-disable header/header */
-import { IMemoryAdapterState, IMemoryWriteOp } from '../../../platform/latentRuntime/common/runtimeProtocol.js';
+import { IMemoryAdapterState, IMemorySnapshot, IMemoryWriteOp } from '../../../platform/latentRuntime/common/runtimeProtocol.js';
+import { IMemoryAdapter, IMemoryComparisonEntry } from '../../../platform/latentRuntime/common/runtimePlugin.js';
 import { JsonListStore } from '../runtimeConfig.js';
 import { RuntimeSecrets } from '../runtimeSecrets.js';
-
-export interface IMemoryAdapter {
-	readonly id: string;
-	readonly displayName: string;
-	mirror(op: IMemoryWriteOp): Promise<void>;
-}
 
 interface IAdapterRecord {
 	readonly id: string;
@@ -48,6 +43,38 @@ export class MemoryAdapterRegistry {
 
 	constructor(private readonly store: JsonListStore<IAdapterRecord>, secrets: RuntimeSecrets) {
 		this.adapters = [new Mem0Adapter(secrets)];
+	}
+
+	/** Adds an adapter contributed by a runtime plugin (`latent.memoryAdapters`); it starts disabled. */
+	register(adapter: IMemoryAdapter): void {
+		this.unregister(adapter.id);
+		this.adapters.push(adapter);
+	}
+
+	unregister(id: string): void {
+		const index = this.adapters.findIndex(adapter => adapter.id === id);
+		if (index >= 0) {
+			this.adapters.splice(index, 1);
+		}
+	}
+
+	/** Compares an enabled adapter's remote copy with the local snapshot; nothing is written. */
+	async compare(id: string, local: IMemorySnapshot): Promise<readonly IMemoryComparisonEntry[]> {
+		const adapter = this.adapters.find(candidate => candidate.id === id);
+		if (!adapter?.compare) {
+			throw new Error(`Memory adapter ${id} cannot compare copies.`);
+		}
+		if (this.store.get(id)?.enabled !== true) {
+			throw new Error(`Memory adapter ${id} is disabled.`);
+		}
+		try {
+			const entries = await adapter.compare(local);
+			this.errors.delete(id);
+			return entries;
+		} catch (error) {
+			this.errors.set(id, error instanceof Error ? error.message : String(error));
+			throw error;
+		}
 	}
 
 	list(): IMemoryAdapterState[] {
