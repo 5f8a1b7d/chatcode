@@ -1,39 +1,37 @@
 /* eslint-disable header/header */
-import { $, append, clearNode } from '../../../../../base/browser/dom.js';
+import { ExtensionIdentifier } from '../../../../../platform/extensions/common/extensions.js';
+import { IChatAgentService } from '../../../chat/common/participants/chatAgents.js';
+import { ChatAgentLocation, ChatModeKind } from '../../../chat/common/constants.js';
 import { Event } from '../../../../../base/common/event.js';
 import { constObservable } from '../../../../../base/common/observable.js';
+import { IChatService } from '../../../chat/common/chatService/chatService.js';
+import { IChatModel } from '../../../chat/common/model/chatModel.js';
 import { IChatSessionsService } from '../../../chat/common/chatSessionsService.js';
 import { runtimeSessionHistory } from './runtimeSessionHistory.js';
 import { Codicon } from '../../../../../base/common/codicons.js';
-import { Disposable, DisposableStore, MutableDisposable } from '../../../../../base/common/lifecycle.js';
+import { Disposable, DisposableMap, DisposableStore, MutableDisposable } from '../../../../../base/common/lifecycle.js';
 import { URI } from '../../../../../base/common/uri.js';
 import { generateUuid } from '../../../../../base/common/uuid.js';
 import { localize, localize2 } from '../../../../../nls.js';
 import { Action2, registerAction2 } from '../../../../../platform/actions/common/actions.js';
 import { ICommandService } from '../../../../../platform/commands/common/commands.js';
 import { IConfigurationService } from '../../../../../platform/configuration/common/configuration.js';
-import { IContextKeyService } from '../../../../../platform/contextkey/common/contextkey.js';
-import { IContextMenuService } from '../../../../../platform/contextview/browser/contextView.js';
-import { IHoverService } from '../../../../../platform/hover/browser/hover.js';
-import { SyncDescriptor } from '../../../../../platform/instantiation/common/descriptors.js';
-import { IInstantiationService, ServicesAccessor } from '../../../../../platform/instantiation/common/instantiation.js';
-import { IKeybindingService } from '../../../../../platform/keybinding/common/keybinding.js';
+import { ServicesAccessor } from '../../../../../platform/instantiation/common/instantiation.js';
 import { ILogService } from '../../../../../platform/log/common/log.js';
 import { INotificationService, Severity } from '../../../../../platform/notification/common/notification.js';
-import { IOpenerService } from '../../../../../platform/opener/common/opener.js';
 import { IQuickInputService } from '../../../../../platform/quickinput/common/quickInput.js';
-import { Registry } from '../../../../../platform/registry/common/platform.js';
-import { IThemeService } from '../../../../../platform/theme/common/themeService.js';
-import { ViewPane } from '../../../../browser/parts/views/viewPane.js';
 import { IWorkbenchContribution } from '../../../../common/contributions.js';
-import { Extensions as ViewExtensions, IViewDescriptorService, IViewsRegistry } from '../../../../common/views.js';
 import { IStatusbarEntryAccessor, IStatusbarService, StatusbarAlignment } from '../../../../services/statusbar/browser/statusbar.js';
-import { VIEW_CONTAINER as ExplorerViewContainer } from '../../../files/browser/explorerViewlet.js';
 import { IBotConfig, IGatewayConfig, IModelBinding, IRuntimeApprovalRequest, IRuntimeState, IScheduledJob } from '../../../../../platform/latentRuntime/common/runtimeProtocol.js';
 import { IThreadService } from '../../common/threads.js';
 import { sessionsSearchSources } from '../../common/sessionsSearch.js';
 import { LatentSettings } from '../latentConfiguration.js';
+import { IEditorService } from '../../../../services/editor/common/editorService.js';
 import { IManagedRuntimeService } from './managedRuntimeService.js';
+import { reviewMemoryAdapter } from './memoryReview.js';
+
+import './runtimeViews.js';
+import { MarkdownString } from '../../../../../base/common/htmlContent.js';
 
 export const LatentBotsViewId = 'latent.bots';
 
@@ -43,6 +41,7 @@ export class RuntimeContribution extends Disposable implements IWorkbenchContrib
 
 	private readonly statusEntry = this._register(new MutableDisposable<IStatusbarEntryAccessor>());
 	private state: IRuntimeState | undefined;
+	private readonly indexedModels = this._register(new DisposableMap<string, DisposableStore>());
 
 	constructor(
 		@IManagedRuntimeService private readonly runtime: IManagedRuntimeService,
@@ -52,6 +51,8 @@ export class RuntimeContribution extends Disposable implements IWorkbenchContrib
 		@IThreadService private readonly threadService: IThreadService,
 		@ILogService private readonly logService: ILogService,
 		@IChatSessionsService private readonly chatSessionsService: IChatSessionsService,
+		@IChatService private readonly chatService: IChatService,
+		@IChatAgentService chatAgentService: IChatAgentService,
 	) {
 		super();
 		this._register(this.runtime.onDidChangeState(state => { this.state = state; this.updateStatus(); }));
@@ -61,6 +62,27 @@ export class RuntimeContribution extends Disposable implements IWorkbenchContrib
 				this.logService.info(`[LatentRuntime] ${notification.gatewayId}/${notification.chatId} ${notification.sender}: ${notification.text.slice(0, 80)}`);
 			}
 		}));
+		this._register(this.chatSessionsService.registerChatSessionContribution({
+			type: 'latent-runtime', name: 'latent-runtime', displayName: localize('latent.runtime.bots', "Bots"),
+			description: localize('latent.runtime.botSessions', "Conversations with your bots"), icon: Codicon.robot.id,
+			requiresCopilotSignIn: false, requiresCustomModels: true, supportsAutoModel: true, supportsDelegation: false,
+		}));
+		this._register(chatAgentService.registerDynamicAgent({
+			id: 'latent-runtime', name: 'latent-runtime', fullName: localize('latent.runtime.botAgent', "Bot"),
+			extensionId: new ExtensionIdentifier('chatcode.runtime'), extensionVersion: undefined,
+			extensionPublisherId: 'chatcode', extensionDisplayName: 'Chatcode', isDefault: false, isDynamic: true, isCore: true,
+			metadata: { themeIcon: Codicon.robot }, slashCommands: [], locations: [ChatAgentLocation.Chat],
+			modes: [ChatModeKind.Agent, ChatModeKind.Ask], disambiguation: [],
+		}, {
+			invoke: async (request, progress) => {
+				const sessionId = request.sessionResource.path.slice(1);
+				const session = (await this.runtime.listSessions()).find(candidate => candidate.sessionId === sessionId);
+				if (!session) { throw new Error(localize('latent.runtime.missingSession', "The runtime session is no longer available.")); }
+				const result = await this.runtime.runBot(session.botId, { text: request.message, sessionId });
+				progress([{ kind: 'markdownContent', content: new MarkdownString(result.text) }]);
+				return {};
+			},
+		}));
 		this._register(this.chatSessionsService.registerChatSessionContentProvider('latent-runtime', {
 			provideChatSessionContent: async sessionResource => {
 				const sessionId = sessionResource.path.slice(1);
@@ -69,7 +91,12 @@ export class RuntimeContribution extends Disposable implements IWorkbenchContrib
 				return {
 					sessionResource, title: session.title,
 					history: runtimeSessionHistory(await this.runtime.getSessionTurns(sessionId)),
-					isReadOnly: constObservable(true), onWillDispose: Event.None, dispose() { },
+					isReadOnly: constObservable(!(await this.runtime.listBots()).some(bot => bot.id === session.botId)),
+					requestHandler: async (request, progress) => {
+						const result = await this.runtime.runBot(session.botId, { text: request.message, sessionId });
+						progress([{ kind: 'markdownContent', content: new MarkdownString(result.text) }]);
+					},
+					onWillDispose: Event.None, dispose() { },
 				};
 			},
 		}));
@@ -92,9 +119,19 @@ export class RuntimeContribution extends Disposable implements IWorkbenchContrib
 				void this.syncEnabled();
 			}
 		}));
+		this._register(this.chatService.onDidCreateModel(model => this.trackModel(model)));
 		this._register(this.threadService.onDidChangeThreads(() => void this.indexThreads()));
 		this.updateStatus();
 		void this.syncEnabled();
+	}
+
+	private trackModel(model: IChatModel): void {
+		const id = model.sessionResource.toString();
+		if (this.indexedModels.has(id)) { return; }
+		const listeners = new DisposableStore();
+		this.indexedModels.set(id, listeners);
+		listeners.add(model.onDidChange(event => { if (event.kind === 'completedRequest') { void this.indexThreads(); } }));
+		listeners.add(model.onDidDispose(() => this.indexedModels.deleteAndDispose(id)));
 	}
 
 	private async syncEnabled(): Promise<void> {
@@ -118,9 +155,14 @@ export class RuntimeContribution extends Disposable implements IWorkbenchContrib
 		}
 		try {
 			const turns = [];
-			for (const thread of this.threadService.listThreads().slice(0, 50)) {
+			for (const thread of this.threadService.listThreads()) {
 				if (thread.origin === 'runtime') { continue; }
 				for (const branch of thread.branches) {
+					const model = this.chatService.getSession(branch.sessionResource);
+					if (model) {
+						this.trackModel(model);
+						if (model.getRequests().some(request => request.response && !request.response.isComplete)) { continue; }
+					}
 					for (const turn of await this.threadService.getTurns(thread.id, branch.id)) {
 						turns.push({ sessionId: branch.sessionResource.toString(), threadId: thread.id, branchId: branch.id, seq: turn.index * 2 + (turn.role === 'assistant' ? 1 : 0), role: turn.role, blockType: 'text' as const, text: turn.text, timestamp: turn.timestamp, harness: 'workbench', workdir: thread.tabKey?.resource.path ?? '' });
 					}
@@ -171,84 +213,6 @@ export class RuntimeContribution extends Disposable implements IWorkbenchContrib
 		], { sticky: true });
 	}
 }
-
-/** The Bots view in the Explorer: bots, gateways, jobs, memory adapters (P1-FR-084). */
-class BotsView extends ViewPane {
-	private botsBody!: HTMLElement;
-	private readonly listeners = this._register(new DisposableStore());
-
-	constructor(
-		options: { id: string; title: string },
-		@IKeybindingService keybindingService: IKeybindingService,
-		@IContextMenuService contextMenuService: IContextMenuService,
-		@IConfigurationService configurationService: IConfigurationService,
-		@IContextKeyService contextKeyService: IContextKeyService,
-		@IViewDescriptorService viewDescriptorService: IViewDescriptorService,
-		@IInstantiationService instantiationService: IInstantiationService,
-		@IOpenerService openerService: IOpenerService,
-		@IThemeService themeService: IThemeService,
-		@IHoverService hoverService: IHoverService,
-		@IManagedRuntimeService private readonly runtime: IManagedRuntimeService,
-		@ICommandService private readonly commandService: ICommandService,
-	) {
-		super({ ...options, titleMenuId: undefined }, keybindingService, contextMenuService, configurationService, contextKeyService, viewDescriptorService, instantiationService, openerService, themeService, hoverService);
-	}
-
-	protected override renderBody(container: HTMLElement): void {
-		super.renderBody(container);
-		container.classList.add('latent-bots-view');
-		this.botsBody = append(container, $('.latent-bots-body'));
-		this.listeners.add(this.runtime.onDidChangeState(() => void this.refresh()));
-		this.listeners.add(this.onDidChangeBodyVisibility(visible => visible && void this.refresh()));
-		void this.refresh();
-	}
-
-	private async refresh(): Promise<void> {
-		clearNode(this.botsBody);
-		const state = await this.runtime.getState().catch(() => undefined);
-		if (!state?.connected) {
-			const empty = append(this.botsBody, $('.latent-bots-empty'));
-			empty.textContent = localize('latent.bots.stopped', "The managed runtime is not running.");
-			const start = append(this.botsBody, $('button.monaco-button'));
-			start.textContent = localize('latent.bots.start', "Start Runtime");
-			start.addEventListener('click', () => void this.commandService.executeCommand('latent.runtime.start'));
-			return;
-		}
-		const [bots, gateways, jobs, adapters] = await Promise.all([this.runtime.listBots(), this.runtime.listGateways(), this.runtime.listJobs(), this.runtime.listMemoryAdapters()]);
-		this.section(localize('latent.bots.bots', "Bots"), bots.map(bot => `${bot.name} · ${bot.execution.kind === 'provider' ? bot.execution.modelBindingId : bot.execution.harness} · ${bot.toolAuthorizationScope.autoApprove ? localize('latent.bots.auto', "auto within scope") : localize('latent.bots.ask', "asks for approval")}`), 'latent.runtime.createBot', localize('latent.bots.createBot', "Create Bot"));
-		this.section(localize('latent.bots.gateways', "Gateways"), gateways.map(gateway => `${gateway.name} (${gateway.platform}) · ${state.gateways.find(health => health.id === gateway.id)?.connected ? localize('latent.bots.connected', "connected") : localize('latent.bots.disconnected', "disconnected")}`), 'latent.runtime.addGateway', localize('latent.bots.addGateway', "Add Gateway"));
-		this.section(localize('latent.bots.jobs', "Scheduled Jobs"), jobs.map(job => `${job.name} · ${job.schedule} · ${job.nextRunAt ? new Date(job.nextRunAt).toLocaleString() : '—'}${job.lastStatus ? ` · ${job.lastStatus}` : ''}`), 'latent.runtime.createJob', localize('latent.bots.createJob', "Create Job"));
-		this.section(localize('latent.bots.adapters', "Memory Adapters"), adapters.map(adapter => `${adapter.displayName} · ${adapter.enabled ? localize('latent.bots.enabled', "enabled") : localize('latent.bots.disabled', "disabled")}${adapter.degraded ? ` · ${adapter.lastError}` : ''}`), 'latent.runtime.toggleMemoryAdapter', localize('latent.bots.toggleAdapter', "Enable or Disable Adapter"));
-		const background = append(this.botsBody, $('.latent-bots-footer'));
-		background.textContent = state.backgroundEnabled ? localize('latent.bots.background.on', "Background mode: on (keeps running after quit)") : localize('latent.bots.background.off', "Background mode: off");
-	}
-
-	private section(title: string, rows: string[], command: string, commandLabel: string): void {
-		const section = append(this.botsBody, $('.latent-bots-section'));
-		append(section, $('h3')).textContent = title;
-		const list = append(section, $('ul'));
-		if (!rows.length) {
-			append(list, $('li.empty')).textContent = localize('latent.bots.none', "None yet");
-		}
-		for (const row of rows) {
-			append(list, $('li')).textContent = row;
-		}
-		const button = append(section, $('button.monaco-button'));
-		button.textContent = commandLabel;
-		button.addEventListener('click', () => void this.commandService.executeCommand(command).then(() => this.refresh()));
-	}
-}
-
-Registry.as<IViewsRegistry>(ViewExtensions.ViewsRegistry).registerViews([{
-	id: LatentBotsViewId,
-	name: localize2('latent.bots.viewName', "Bots"),
-	ctorDescriptor: new SyncDescriptor(BotsView),
-	canToggleVisibility: true,
-	canMoveView: true,
-	order: 5,
-	weight: 20,
-	collapsed: true,
-}], ExplorerViewContainer);
 
 const category = localize2('latent.category', "Latent");
 
@@ -375,12 +339,37 @@ registerAction2(class extends Action2 {
 				systemPrompt: systemPrompt ?? '',
 				execution: { kind: 'provider', modelBindingId: bindingId },
 				toolAuthorizationScope: scope?.id === 'workspace'
-					? { allowTools: ['read_file', 'write_file', 'list_dir', 'recall', 'memory_write', 'create_artifact'], allowPaths: ['**'], allowNetwork: [], autoApprove: true }
-					: { allowTools: ['read_file', 'list_dir', 'recall'], allowPaths: ['**'], allowNetwork: [], autoApprove: true },
+					? { allowTools: ['read_file', 'write_file', 'list_dir', 'session_search', 'memory', 'recall', 'memory_write', 'create_artifact'], allowPaths: ['**'], allowNetwork: [], autoApprove: true }
+					: { allowTools: ['read_file', 'list_dir', 'session_search', 'recall'], allowPaths: ['**'], allowNetwork: [], autoApprove: true },
 				capabilities: [],
 			};
 			await runtime.upsertBot(bot);
 			notificationService.info(localize('latent.runtime.botCreated', "Bot {0} created.", name));
+		});
+	}
+});
+
+registerAction2(class extends Action2 {
+	constructor() { super({ id: 'latent.runtime.restoreBotPresets', title: localize2('latent.runtime.restoreBotPresets', "Restore Default Bots"), category, f1: true }); }
+	async run(accessor: ServicesAccessor): Promise<void> {
+		await withRuntime(accessor, async ({ runtime, quickInput, notificationService }) => {
+			const presets = await runtime.listBotPresets();
+			if (!presets.length) {
+				notificationService.info(localize('latent.runtime.noPresets', "No extension provides default Bots."));
+				return;
+			}
+			const existing = new Set((await runtime.listBots()).map(bot => bot.id));
+			const picked = await quickInput.pick(presets.map(preset => ({
+				label: preset.bot.name,
+				description: existing.has(preset.bot.id) ? preset.owner : localize('latent.runtime.presetDeleted', "{0} · deleted", preset.owner),
+				id: preset.bot.id,
+				picked: true,
+			})), { canPickMany: true, placeHolder: localize('latent.runtime.pickPresets', "Bots to reset to their defaults; your changes to them are replaced") });
+			if (!picked?.length) {
+				return;
+			}
+			const restored = await runtime.restoreBotPresets({ botIds: picked.map(item => item.id) });
+			notificationService.info(localize('latent.runtime.presetsRestored', "{0} Bots restored to their defaults.", restored.length));
 		});
 	}
 });
@@ -409,10 +398,10 @@ registerAction2(class extends Action2 {
 
 registerAction2(class extends Action2 {
 	constructor() { super({ id: 'latent.runtime.toggleMemoryAdapter', title: localize2('latent.runtime.toggleMemoryAdapter', "Enable or Disable Memory Adapter"), category, f1: true }); }
-	async run(accessor: ServicesAccessor): Promise<void> {
+	async run(accessor: ServicesAccessor, adapterId?: string): Promise<void> {
 		await withRuntime(accessor, async ({ runtime, quickInput }) => {
 			const adapters = await runtime.listMemoryAdapters();
-			const picked = await quickInput.pick(adapters.map(adapter => ({ label: adapter.displayName, description: adapter.enabled ? localize('latent.bots.enabled', "enabled") : localize('latent.bots.disabled', "disabled"), id: adapter.id })), { placeHolder: localize('latent.runtime.pickAdapter', "Memory adapter") });
+			const picked = typeof adapterId === 'string' && adapters.some(adapter => adapter.id === adapterId) ? { id: adapterId } : await quickInput.pick(adapters.map(adapter => ({ label: adapter.displayName, description: adapter.enabled ? localize('latent.bots.enabled', "enabled") : localize('latent.bots.disabled', "disabled"), id: adapter.id })), { placeHolder: localize('latent.runtime.pickAdapter', "Memory adapter") });
 			if (!picked?.id) {
 				return;
 			}
@@ -427,6 +416,14 @@ registerAction2(class extends Action2 {
 			}
 			await runtime.setMemoryAdapterEnabled(picked.id, true, secret);
 		});
+	}
+});
+
+registerAction2(class extends Action2 {
+	constructor() { super({ id: 'latent.memory.reviewAdapter', title: localize2('latent.memory.reviewAdapter', "Review Memory Adapter Copy"), category, f1: true }); }
+	async run(accessor: ServicesAccessor, adapterId?: string): Promise<void> {
+		const editorService = accessor.get(IEditorService);
+		await withRuntime(accessor, services => reviewMemoryAdapter({ ...services, editorService }, typeof adapterId === 'string' ? adapterId : undefined));
 	}
 });
 
