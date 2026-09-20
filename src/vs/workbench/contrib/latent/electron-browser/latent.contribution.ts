@@ -59,6 +59,10 @@ registerWorkbenchContribution2(RuntimeContribution.ID, RuntimeContribution, Work
 // Managed runtime access for extensions (`latent.runtime.api.*`)
 import '../browser/runtime/runtimeApiCommands.js';
 
+// Diff documents for reviewing a memory adapter's copy
+import { MemoryReviewContentProvider } from '../browser/runtime/memoryReview.js';
+registerWorkbenchContribution2(MemoryReviewContentProvider.ID, MemoryReviewContentProvider, WorkbenchPhase.Eventually);
+
 // Product overrides of derivative builds: context keys and the optional workbench overlay
 import { LatentProductContribution } from '../browser/latentProduct.js';
 registerWorkbenchContribution2(LatentProductContribution.ID, LatentProductContribution, WorkbenchPhase.BlockRestore);
@@ -68,3 +72,6 @@ import { ProviderSecretMigrationContribution } from '../browser/migration/provid
 registerWorkbenchContribution2(ProviderSecretMigrationContribution.ID, ProviderSecretMigrationContribution, WorkbenchPhase.Eventually);
 
 //#endregion
+
+import { RuntimeMemoryTools } from '../browser/runtime/runtimeMemoryTools.js';
+registerWorkbenchContribution2(RuntimeMemoryTools.ID, RuntimeMemoryTools, WorkbenchPhase.AfterRestored);

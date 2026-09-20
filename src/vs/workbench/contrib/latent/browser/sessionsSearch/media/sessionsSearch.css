@@ -178,10 +178,16 @@
 	opacity: 0.8;
 }
 
-/* Latent: Bots view in the Explorer */
+/* Latent: Bots view in the Explorer; DomScrollableElement scrolls this element itself. */
 .latent-bots-view .latent-bots-body {
+	box-sizing: border-box;
+	height: 100%;
 	padding: 4px 12px;
-	overflow: auto;
+	overflow: hidden;
+}
+
+.latent-bots-view .latent-bots-section li {
+	overflow-wrap: anywhere;
 }
 
 .latent-bots-view .latent-bots-section h3 {

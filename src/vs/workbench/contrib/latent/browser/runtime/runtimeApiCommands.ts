@@ -3,7 +3,7 @@ import { CommandsRegistry } from '../../../../../platform/commands/common/comman
 import { IConfigurationService } from '../../../../../platform/configuration/common/configuration.js';
 import { ServicesAccessor } from '../../../../../platform/instantiation/common/instantiation.js';
 import { ApprovalDecision, IBotConfig, IBotInput, IGatewayConfig, IMemoryWriteOp, IModelBinding, IRecallOptions } from '../../../../../platform/latentRuntime/common/runtimeProtocol.js';
-import { IRuntimePluginRecord } from '../../../../../platform/latentRuntime/common/runtimePlugin.js';
+import { IMemoryComparisonEntry, IRuntimePluginRecord, MemoryComparisonDecision } from '../../../../../platform/latentRuntime/common/runtimePlugin.js';
 import { LatentSettings } from '../latentConfiguration.js';
 import { IManagedRuntimeService } from './managedRuntimeService.js';
 
@@ -21,6 +21,9 @@ const handlers: Record<string, RuntimeApiHandler> = {
 	upsertBot: (runtime, config: IBotConfig) => runtime.upsertBot(config),
 	removeBot: (runtime, id: string) => runtime.removeBot(id),
 	runBot: (runtime, botId: string, input: IBotInput) => runtime.runBot(botId, input),
+	registerBotPresets: (runtime, owner: string, bots: IBotConfig[]) => runtime.registerBotPresets(owner, bots),
+	listBotPresets: runtime => runtime.listBotPresets(),
+	restoreBotPresets: (runtime, filter?: { owner?: string; botIds?: string[] }) => runtime.restoreBotPresets(filter),
 	listSessions: runtime => runtime.listSessions(),
 	getSessionTurns: (runtime, sessionId: string) => runtime.getSessionTurns(sessionId),
 	listApprovals: runtime => runtime.listApprovals(),
@@ -31,12 +34,17 @@ const handlers: Record<string, RuntimeApiHandler> = {
 	deliver: (runtime, gatewayId: string, chatId: string, text: string) => runtime.deliver(gatewayId, chatId, text),
 	setModelBinding: (runtime, id: string, binding: IModelBinding) => runtime.setModelBinding(id, binding),
 	recall: (runtime, query: string, options?: IRecallOptions) => runtime.recall(query, options),
+	memoryReview: (runtime, response?: string) => runtime.memoryReview(response),
+	memoryCheckpoint: (runtime, sessionId: string, messages: { role: 'user' | 'assistant' | 'tool'; text: string }[]) => runtime.memoryCheckpoint(sessionId, messages),
+	memoryPrompt: (runtime, sessionId: string) => runtime.memoryPrompt(sessionId),
+	sessionSearch: (runtime, options: { query?: string; sessionId?: string; from?: number; to?: number }) => runtime.sessionSearch(options),
 	memorySnapshot: runtime => runtime.memorySnapshot(),
 	memoryWrite: (runtime, op: IMemoryWriteOp) => runtime.memoryWrite(op),
 	memoryConfirm: (runtime, id: string, accept: boolean) => runtime.memoryConfirm(id, accept),
 	listMemoryAdapters: runtime => runtime.listMemoryAdapters(),
 	setMemoryAdapterEnabled: (runtime, id: string, enabled: boolean, secret?: string, baseUrl?: string) => runtime.setMemoryAdapterEnabled(id, enabled, secret, baseUrl),
 	compareMemoryAdapter: (runtime, id: string) => runtime.compareMemoryAdapter(id),
+	resolveMemoryComparison: (runtime, id: string, entry: IMemoryComparisonEntry, decision: MemoryComparisonDecision) => runtime.resolveMemoryComparison(id, entry, decision),
 	listArtifacts: (runtime, filter?: { sessionId?: string; botId?: string }) => runtime.listArtifacts(filter),
 	addArtifact: (runtime, artifact: { sessionId?: string; botId: string; name: string; content?: string; contentBase64?: string; mimeType?: string }) => runtime.addArtifact(artifact),
 	registerPlugin: (runtime, record: IRuntimePluginRecord) => runtime.registerPlugin(record),
