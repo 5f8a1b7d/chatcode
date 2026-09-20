@@ -32,9 +32,15 @@ export class SkillRegistry {
 		return skills;
 	}
 
+	async remove(id: string): Promise<void> {
+		if (!id || id === '.' || id === '..' || /[/\\]/.test(id)) { throw new Error('Invalid skill id.'); }
+		await fs.rm(join(this.root, id), { recursive: true, force: true });
+	}
+
 	async install(source: ICapabilitySource): Promise<IRuntimeCapability> {
 		await fs.mkdir(this.root, { recursive: true });
 		const name = basename(source.location.replace(/\.git$/, '')).replace(/[^\w.-]/g, '-') || 'skill';
+		if (name === '.' || name === '..') { throw new Error('Invalid skill folder name.'); }
 		const target = join(this.root, name);
 		if (source.kind === 'path') {
 			await fs.cp(source.location, target, { recursive: true });
@@ -50,6 +56,7 @@ export class SkillRegistry {
 	async instructions(ids: readonly string[]): Promise<string> {
 		const parts: string[] = [];
 		for (const id of ids) {
+			if (!id || id === '.' || id === '..' || /[/\\]/.test(id)) { continue; }
 			try {
 				parts.push(await fs.readFile(join(this.root, id, 'SKILL.md'), 'utf8'));
 			} catch {

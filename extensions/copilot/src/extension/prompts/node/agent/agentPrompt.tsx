@@ -31,6 +31,7 @@ import { CustomizationsIndexMetadata, getGlobalContextCacheKey, GlobalContextMes
 import { InternalToolReference } from '../../../prompt/common/intents';
 import { IPromptVariablesService } from '../../../prompt/node/promptVariablesService';
 import { ToolName } from '../../../tools/common/toolNames';
+import { RuntimeMemoryPrompt } from './runtimeMemoryPrompt';
 import { MemoryContextPrompt, MemoryInstructionsPrompt } from '../../../tools/node/memoryContextPrompt';
 import { TodoListContextPrompt } from '../../../tools/node/todoListContextPrompt';
 import { IPromptEndpoint, renderPromptElement } from '../base/promptRenderer';
@@ -362,6 +363,7 @@ class GlobalAgentContext extends PromptElement<GlobalAgentContextProps> {
 				<AgentMultirootWorkspaceStructure maxSize={2000} excludeDotFiles={true} availableTools={this.props.availableTools} workingDir={this.props.workingDir} />
 			</Tag>
 			<UserPreferences flexGrow={7} priority={800} />
+			<RuntimeMemoryPrompt sessionResource={this.props.sessionResource} />
 			{this.props.isNewChat && hasMemoryTool && <MemoryContextPrompt sessionResource={this.props.sessionResource} />}
 			<DeferredToolListReminder availableTools={this.props.availableTools} />
 			{this.props.enableCacheBreakpoints && <cacheBreakpoint type={CacheType} />}

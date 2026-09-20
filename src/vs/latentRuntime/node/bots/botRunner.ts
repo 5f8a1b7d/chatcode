@@ -16,10 +16,13 @@ export interface IBotRunResult {
 export interface IBotRunnerHost {
 	readonly approvals: ApprovalService;
 	readonly tools: ToolRegistry;
+	readonly bot: (id: string) => IBotConfig | undefined;
 	readonly modelBinding: (id: string) => IModelBinding | undefined;
 	readonly toolContext: (bot: IBotConfig, session: IRuntimeSessionRef) => IToolContext;
 	readonly onTurn: (session: IRuntimeSessionRef, turn: IRuntimeSessionTurn) => Promise<void>;
 	readonly approvalTimeoutMs: number;
+	readonly reviewMemory?: (complete: (prompt: string, transcript: string) => Promise<string>, transcript: string, signal: AbortSignal) => Promise<void>;
+	readonly systemContext?: (bot: IBotConfig, sessionId: string) => Promise<string>;
 	readonly log: (message: string) => void;
 }
 
@@ -60,7 +63,9 @@ export class SessionStore {
 
 /** The agent loop of a Bot: model call, scoped tool execution with approvals, persisted turns (P1-FR-083). */
 export class BotRunner {
-	private readonly running = new Set<string>();
+	private readonly running = new Map<string, number>();
+	private readonly activeSessions = new Set<string>();
+	private readonly memoryReviews = new Map<string, AbortController>();
 
 	constructor(private readonly sessions: SessionStore, private readonly host: IBotRunnerHost) { }
 
@@ -76,14 +81,20 @@ export class BotRunner {
 		if (!binding) {
 			throw new Error(`Bot ${bot.name} has no usable model binding (${bot.execution.modelBindingId}).`);
 		}
-		const session = (input.sessionId && await this.sessions.get(input.sessionId)) || await this.sessions.create(bot.id, input.text, origin);
-		this.running.add(bot.id);
+		const existing = input.sessionId ? await this.sessions.get(input.sessionId) : undefined;
+		if (input.sessionId && (!existing || existing.botId !== bot.id)) { throw new Error('The session does not belong to this bot.'); }
+		const session = existing ?? await this.sessions.create(bot.id, input.text, origin);
+		if (this.activeSessions.has(session.sessionId)) { throw new Error('This conversation already has a running request.'); }
+		this.memoryReviews.get(session.sessionId)?.abort();
+		this.activeSessions.add(session.sessionId);
+		this.running.set(bot.id, (this.running.get(bot.id) ?? 0) + 1);
 		try {
 			const userTurn = await this.sessions.append(session.sessionId, 'user', input.text);
 			await this.host.onTurn(session, userTurn);
 			const history = await this.sessions.turns(session.sessionId);
+			const systemContext = await this.host.systemContext?.(bot, session.sessionId) ?? '';
 			const messages: IWireMessage[] = [
-				{ role: 'system', content: `${bot.systemPrompt}\n\nYou are ${bot.name}. Tools outside your authorization scope require the user's approval; if a call is denied, explain and continue.` },
+				{ role: 'system', content: `${bot.systemPrompt}\n\nYou are ${bot.name}. Tools outside your authorization scope require the user's approval; if a call is denied, explain and continue.${this.handoffNote(bot)}\n\n${systemContext}` },
 				...history.filter(turn => turn.role !== 'tool').map((turn): IWireMessage => ({ role: turn.role === 'assistant' ? 'assistant' : 'user', content: turn.text })),
 			];
 			const context = this.host.toolContext(bot, session);
@@ -98,17 +109,38 @@ export class BotRunner {
 				messages.push({ role: 'assistant', content: reply.text || null, tool_calls: reply.toolCalls.map(call => ({ id: call.id, type: 'function', function: { name: call.name, arguments: JSON.stringify(call.args) } })) });
 				for (const call of reply.toolCalls) {
 					const result = await this.executeTool(bot, session, call, context, input);
-					const toolTurn = await this.sessions.append(session.sessionId, 'tool', `${this.host.tools.byWireName(call.name)?.definition.name ?? call.name}(${JSON.stringify(call.args).slice(0, 200)}) → ${result.slice(0, 500)}`);
+					const toolTurn = await this.sessions.append(session.sessionId, 'tool', `${this.host.tools.byWireName(call.name)?.definition.name ?? call.name}(${JSON.stringify(call.args).slice(0, 200)}) → ${result.slice(0, 20_000)}`);
 					await this.host.onTurn(session, toolTurn);
 					messages.push({ role: 'tool', tool_call_id: call.id, content: result.slice(0, 50_000) });
 				}
 			}
 			const assistantTurn = await this.sessions.append(session.sessionId, 'assistant', finalText || '(no response)');
 			await this.host.onTurn(session, assistantTurn);
+			// Hermes reviews after delivery, every ten user turns, excluding scheduled jobs.
+			if (finalText && origin !== 'job' && bot.toolAuthorizationScope.autoApprove && bot.toolAuthorizationScope.allowTools.some(tool => tool === 'memory' || tool === 'memory_write' || tool === '*') && history.filter(turn => turn.role === 'user').length % 10 === 0 && this.host.reviewMemory) {
+				const controller = new AbortController();
+				this.memoryReviews.set(session.sessionId, controller);
+				const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(60_000)]);
+				const transcript = [...history, assistantTurn].map(turn => `${turn.role}: ${turn.text}`).join('\n\n').slice(-60_000);
+				void this.host.reviewMemory(async (prompt, evidence) => (await this.complete(binding, [{ role: 'system', content: prompt }, { role: 'user', content: evidence }], [], signal)).text, transcript, signal)
+					.catch(error => { if (!signal.aborted) { this.host.log(`Memory review failed: ${String(error)}`); } })
+					.finally(() => { if (this.memoryReviews.get(session.sessionId) === controller) { this.memoryReviews.delete(session.sessionId); } });
+			}
 			return { session: { ...session, updatedAt: assistantTurn.timestamp }, text: finalText };
 		} finally {
-			this.running.delete(bot.id);
+			this.activeSessions.delete(session.sessionId);
+			const remaining = (this.running.get(bot.id) ?? 1) - 1;
+			if (remaining) { this.running.set(bot.id, remaining); } else { this.running.delete(bot.id); }
 		}
+	}
+
+	/** Tells the model which Bots it can hand work to; hand-off targets are not part of the stored prompt. */
+	private handoffNote(bot: IBotConfig): string {
+		const targets = (bot.handoffTargets ?? []).flatMap(id => {
+			const target = this.host.bot(id);
+			return target ? [`\`${id}\` (${target.name})`] : [];
+		});
+		return targets.length ? `\n\nYou work together with other Bots. Hand work to ${targets.join(', ')} with the \`handoff\` tool; the hand-off and its answer are recorded in your session.` : '';
 	}
 
 	private async executeTool(bot: IBotConfig, session: IRuntimeSessionRef, call: { id: string; name: string; args: Record<string, unknown> }, context: IToolContext, input: IBotInput): Promise<string> {
@@ -140,7 +172,7 @@ export class BotRunner {
 		}
 	}
 
-	private async complete(binding: IModelBinding, messages: IWireMessage[], tools: object[]): Promise<{ text: string; toolCalls: { id: string; name: string; args: Record<string, unknown> }[] }> {
+	private async complete(binding: IModelBinding, messages: IWireMessage[], tools: object[], signal?: AbortSignal): Promise<{ text: string; toolCalls: { id: string; name: string; args: Record<string, unknown> }[] }> {
 		if (binding.protocol !== 'openai' && binding.protocol !== 'azure') {
 			throw new Error(`The managed runtime supports OpenAI-compatible bindings; ${binding.protocol} is not supported yet.`);
 		}
@@ -152,7 +184,7 @@ export class BotRunner {
 		if (binding.apiKey) {
 			headers[binding.protocol === 'azure' ? 'api-key' : 'authorization'] = binding.protocol === 'azure' ? binding.apiKey : `Bearer ${binding.apiKey}`;
 		}
-		const response = await fetch(endpoint, { method: 'POST', headers, body: JSON.stringify({ model: binding.modelId, messages, tools, stream: false }) });
+		const response = await fetch(endpoint, { method: 'POST', headers, signal, body: JSON.stringify({ model: binding.modelId, messages, ...(tools.length ? { tools } : {}), stream: false }) });
 		if (!response.ok) {
 			throw new Error(`Model request failed: HTTP ${response.status} ${(await response.text()).slice(0, 300)}`);
 		}

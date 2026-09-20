@@ -17,6 +17,7 @@ export class RecallIndex {
 			if (!turn.text.trim()) {
 				continue;
 			}
+			await this.database.run('INSERT OR IGNORE INTO messages (session_id, source_seq, role, content, timestamp) VALUES (?, ?, ?, ?, ?)', [turn.sessionId, turn.seq, turn.role, turn.text, turn.timestamp / 1000]);
 			await this.database.run('INSERT OR REPLACE INTO recall_turns (session_id, thread_id, branch_id, seq, role, block_type, text, ts, harness, workdir) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', [turn.sessionId, turn.threadId ?? null, turn.branchId ?? null, turn.seq, turn.role, turn.blockType, turn.text, turn.timestamp, turn.harness, turn.workdir]);
 			await this.database.run('DELETE FROM recall_fts WHERE session_id = ? AND seq = ?', [turn.sessionId, turn.seq]);
 			await this.database.run('INSERT INTO recall_fts (text, session_id, seq) VALUES (?, ?, ?)', [turn.text, turn.sessionId, turn.seq]);
@@ -39,7 +40,7 @@ export class RecallIndex {
 		const hits: IRecallHit[] = [];
 		for (const row of rows) {
 			const turn = await this.database.get<{ session_id: string; thread_id: string | null; branch_id: string | null; seq: number; role: string; block_type: string; text: string; ts: number; harness: string; workdir: string }>('SELECT * FROM recall_turns WHERE session_id = ? AND seq = ?', [row.session_id, row.seq]);
-			if (!turn || (options.type && turn.block_type !== options.type) || (options.harness && turn.harness !== options.harness)) {
+			if (!turn || (options.excludeSessionId && (turn.session_id === options.excludeSessionId || turn.session_id.startsWith(`${options.excludeSessionId}#checkpoint-`))) || (options.type && turn.block_type !== options.type) || (options.harness && turn.harness !== options.harness)) {
 				continue;
 			}
 			const neighborRows = neighbors > 0
@@ -65,8 +66,10 @@ export class RecallIndex {
 	}
 
 	async rebuild(sessionTurns: () => Promise<readonly IIndexedTurn[]>): Promise<number> {
-		await this.database.exec('DELETE FROM recall_fts; DELETE FROM recall_turns;');
-		return this.index(await sessionTurns());
+		// Preserve workbench history, which is not owned by the runtime session store.
+		await this.index(await sessionTurns());
+		await this.database.exec('DELETE FROM recall_fts; INSERT INTO recall_fts (text, session_id, seq) SELECT text, session_id, seq FROM recall_turns;');
+		return this.count();
 	}
 
 	async count(): Promise<number> {

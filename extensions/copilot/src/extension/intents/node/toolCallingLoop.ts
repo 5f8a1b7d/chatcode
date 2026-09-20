@@ -52,6 +52,7 @@ import { ThinkingDataItem, ToolCallRound } from '../../prompt/common/toolCallRou
 import { IBuildPromptResult, IResponseProcessor } from '../../prompt/node/intents';
 import { PseudoStopStartResponseProcessor } from '../../prompt/node/pseudoStartStopConversationCallback';
 import { ResponseProcessorContext } from '../../prompt/node/responseProcessorContext';
+import { RuntimeMemoryLifecycle } from '../../prompts/node/agent/runtimeMemoryLifecycle';
 import { SummarizedConversationHistoryMetadata } from '../../prompts/node/agent/summarizedConversationHistory';
 import { ToolFailureEncountered, ToolResultMetadata } from '../../prompts/node/panel/toolCalling';
 import { getToolName, ToolName } from '../../tools/common/toolNames';
@@ -1240,6 +1241,7 @@ export abstract class ToolCallingLoop<TOptions extends IToolCallingLoopOptions =
 
 	public async run(outputStream: ChatResponseStream | undefined, token: CancellationToken): Promise<IToolCallLoopResult> {
 		const agentName = this.agentName ?? 'GitHub Copilot Chat';
+		RuntimeMemoryLifecycle.cancel(this.options.request.sessionResource?.toString());
 
 		// Extract custom mode name for debug logging (kept separate from agentName to avoid metric cardinality)
 		const modeInstructions = (this.options.request as { modeInstructions2?: { name?: string; isBuiltin?: boolean } }).modeInstructions2;
@@ -1415,6 +1417,12 @@ export abstract class ToolCallingLoop<TOptions extends IToolCallingLoopOptions =
 					GenAiMetrics.recordAgentDuration(this._otelService, agentName, durationSec);
 					GenAiMetrics.recordAgentTurnCount(this._otelService, agentName, result.toolCallRounds.length);
 
+					const memorySession = this.options.request.sessionResource?.toString();
+					if (memorySession && !subAgentInvocationId && !token.isCancellationRequested && result.response.type === ChatFetchResponseType.Success && this.options.conversation.turns.length % 10 === 0) {
+						const reviewer = this._instantiationService.createInstance(RuntimeMemoryLifecycle);
+						const messages: Raw.ChatMessage[] = [...result.lastRequestMessages, { role: Raw.ChatRole.Assistant, content: [{ type: Raw.ChatCompletionContentPartKind.Text, text: String(result.response.value) }] }];
+						void reviewer.review(memorySession, messages, () => this._endpointProvider.getChatEndpoint(this.options.request));
+					}
 					return result;
 				} catch (err) {
 					span.setStatus(SpanStatusCode.ERROR, err instanceof Error ? err.message : String(err));

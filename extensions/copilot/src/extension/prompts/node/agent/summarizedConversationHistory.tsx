@@ -40,6 +40,7 @@ import { renderPromptElement } from '../base/promptRenderer';
 import { Tag } from '../base/tag';
 import { ChatToolCalls } from '../panel/toolCalling';
 import { AgentUserMessage, AgentUserMessageCustomizations, getUserMessagePropsFromAgentProps, getUserMessagePropsFromTurn } from './agentPrompt';
+import { RuntimeMemoryLifecycle } from './runtimeMemoryLifecycle';
 import { DefaultOpenAIKeepGoingReminder } from './openai/defaultOpenAIPrompt';
 import { SimpleSummarizedHistory } from './simpleSummarizedHistoryPrompt';
 
@@ -762,6 +763,7 @@ class ConversationHistorySummarizer {
 			stripCacheBreakpoints(summarizationPrompt);
 			replaceImageContentWithPlaceholders(summarizationPrompt);
 
+			await this.instantiationService.createInstance(RuntimeMemoryLifecycle).checkpoint(this.props.promptContext.request?.sessionResource?.toString(), summarizationPrompt);
 			let messages = ToolCallingLoop.stripInternalToolCallIds(summarizationPrompt);
 
 			// Strip custom client-side tool search (tool_search) tool_use/tool_result

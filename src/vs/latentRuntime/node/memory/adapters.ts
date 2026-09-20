@@ -3,6 +3,7 @@ import { IMemoryAdapterState, IMemorySnapshot, IMemoryWriteOp } from '../../../p
 import { IMemoryAdapter, IMemoryComparisonEntry } from '../../../platform/latentRuntime/common/runtimePlugin.js';
 import { JsonListStore } from '../runtimeConfig.js';
 import { RuntimeSecrets } from '../runtimeSecrets.js';
+import { compareMemory } from './memoryComparison.js';
 
 interface IAdapterRecord {
 	readonly id: string;
@@ -60,17 +61,36 @@ export class MemoryAdapterRegistry {
 
 	/** Compares an enabled adapter's remote copy with the local snapshot; nothing is written. */
 	async compare(id: string, local: IMemorySnapshot): Promise<readonly IMemoryComparisonEntry[]> {
-		const adapter = this.adapters.find(candidate => candidate.id === id);
-		if (!adapter?.compare) {
+		const adapter = this.enabledAdapter(id);
+		if (!adapter.compare && !adapter.entries) {
 			throw new Error(`Memory adapter ${id} cannot compare copies.`);
+		}
+		return this.tracked(id, async () => adapter.compare ? adapter.compare(local) : compareMemory(local, await adapter.entries!()));
+	}
+
+	/** Delivers a write to one enabled adapter only, for example to keep the local version of a reviewed entry. */
+	async mirrorTo(id: string, op: IMemoryWriteOp): Promise<void> {
+		const adapter = this.enabledAdapter(id);
+		await this.tracked(id, () => adapter.mirror(op));
+	}
+
+	private enabledAdapter(id: string): IMemoryAdapter {
+		const adapter = this.adapters.find(candidate => candidate.id === id);
+		if (!adapter) {
+			throw new Error(`Unknown memory adapter ${id}`);
 		}
 		if (this.store.get(id)?.enabled !== true) {
 			throw new Error(`Memory adapter ${id} is disabled.`);
 		}
+		return adapter;
+	}
+
+	/** Runs an adapter call; a failure marks the adapter degraded and is rethrown. */
+	private async tracked<T>(id: string, call: () => Promise<T>): Promise<T> {
 		try {
-			const entries = await adapter.compare(local);
+			const result = await call();
 			this.errors.delete(id);
-			return entries;
+			return result;
 		} catch (error) {
 			this.errors.set(id, error instanceof Error ? error.message : String(error));
 			throw error;
