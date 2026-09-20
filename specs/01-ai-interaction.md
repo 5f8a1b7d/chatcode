@@ -239,6 +239,16 @@ without treating `@` as an Attachment Number.
 - **P1-FR-084** The Workbench shows runtime state (connected, background enabled, gateway health,
   next scheduled runs) in a **Runtime** status bar item and a **Runtime** view in the Explorer's
   Bots tab. Runtime sessions appear in Sessions search.
+- **P1-FR-085** A Bot may name other Bots as hand-off targets (`handoffTargets`). The built-in
+  `handoff` tool runs a listed target with the request and returns its answer; the hand-off and
+  the answer are recorded in both sessions. The runtime tells the model its targets, refuses
+  targets that are not listed, and refuses a target that is already running, so hand-offs cannot
+  cycle. Like every tool, `handoff` is subject to the Tool Authorization Scope.
+- **P1-FR-086** Extensions contribute default Bots as **Bot presets**
+  (`latent.runtime.api.registerBotPresets(owner, bots)`). A preset creates its Bot once, unless a
+  Bot with that id exists; afterwards the Bot belongs to the user, and edits or deletions are kept
+  when the extension registers its presets again. *Restore Default Bots* resets the Bots the user
+  picks to their presets, recreating deleted ones. A preset id belongs to one owner.
 
 ### 2.9 Memory
 
@@ -258,6 +268,12 @@ without treating `@` as an Attachment Number.
 - **P1-FR-094** External memory systems (Mem0 and others) are available only as Memory Adapters
   that the user enables explicitly per adapter (`latent.memory.adapters.<id>.enabled`, default
   `false`). An adapter can mirror or query, never replace, the local store.
+- **P1-FR-095** An enabled Memory Adapter that exposes its remote copy can be compared with local
+  memory without changing either: each entry is `same`, `localOnly`, `remoteOnly`, or `conflict`
+  (a remote entry similar enough to an unmatched local entry). *Review Memory Adapter Copy* walks
+  the differing entries, shows each conflict as a diff, and applies only the choices the user
+  makes: *keep local* writes the local version to that adapter, *take the adapter's version*
+  writes it to local memory (and mirrors it to the enabled adapters).
 
 ## 3. Module boundaries
 
@@ -502,6 +518,7 @@ Contribution points added by Part 1 (all under the `latent` namespace):
 | `latent.memoryAdapters` (registry) | Memory Adapters; each declares id, display name, and that it defaults to disabled |
 | `latent.gatewayPlatforms` (runtime registry) | Additional Gateway adapters implementing the platform contract |
 | `latent.botTools` (runtime registry) | Additional tools with a declared scope key |
+| `latent.runtime.api.registerBotPresets` (runtime API) | Default Bots contributed by an extension (P1-FR-086) |
 
 ## 5. Failure states
 
