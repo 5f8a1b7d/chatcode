@@ -63,8 +63,7 @@ node_modules.local-before-external/
 screenshots/
 scripts/fixtures
 
-# Legacy local copy of Part 3; the tracked private specification lives in latent-private/specs/
+# Legacy local copy of Part 3; the tracked private specification lives in the private derivative repository
 /specs/03-private-derivative.md
-# Derivative build sources and the workbench overlay they place into src/ (kept out of this repository)
-/latent-private/
+# Workbench overlay that derivative builds place into src/ (kept out of this repository)
 /src/vs/workbench/contrib/latentPrivate/
