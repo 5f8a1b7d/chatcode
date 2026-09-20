@@ -8,7 +8,7 @@ acceptance-scenario format so that they can be implemented and verified independ
 | --- | --- | --- | --- |
 | 1 | [01-ai-interaction.md](01-ai-interaction.md) | Public, committed | Draft for review |
 | 2 | [02-selection-provider-extensions.md](02-selection-provider-extensions.md) | Public, committed | Draft for review |
-| 3 | `latent-private/specs/03-private-derivative.md` | **Private repository.** Tracked in the independent `latent-private/` repository. The legacy local copy at `/specs/03-private-derivative.md` remains ignored by this public repository. | Draft for review |
+| 3 | `specs/03-private-derivative.md` of the private derivative | **Private repository.** Tracked in the independent private derivative repository. The legacy local copy at `/specs/03-private-derivative.md` remains ignored by this public repository. | Draft for review |
 
 The two product screenshots under `screenshots/` are interaction references for the side chat and
 for selection annotations only. Text inside them is not a product requirement.

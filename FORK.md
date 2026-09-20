@@ -52,7 +52,7 @@ fork-named paths from the copyright check instead of disabling it.
 | `build/gulpfile.extensions.ts`, `build/npm/dirs.ts` | Register `extensions/latent-provider` and `extensions/latent-selection` with the build. |
 | `build/lib/i18n.resources.json` | Register fork folders for localisation. |
 | `package.json`, `package-lock.json`, `remote/web/package.json`, `remote/web/package-lock.json` | Add `react`/`react-dom` (loaded through `contrib/latent/browser/reactRuntime.ts`, which leaves `amdX.ts` untouched) and the `selection-hook` native dependency. |
-| `.gitignore`, `AGENTS.md`, `.github/copilot-instructions.md`, `.github/instructions/coding-guidelines.instructions.md`, `.vscode/mcp.json` | Fork housekeeping; `.gitignore` also keeps derivative-build sources (`/latent-private/`, `/src/vs/workbench/contrib/latentPrivate/`) out of this repository. |
+| `.gitignore`, `AGENTS.md`, `.github/copilot-instructions.md`, `.github/instructions/coding-guidelines.instructions.md`, `.vscode/mcp.json` | Fork housekeeping; `.gitignore` also keeps the derivative overlay copy (`/src/vs/workbench/contrib/latentPrivate/`) out of this repository. |
 | Tests under `src/vs/workbench/contrib/chat/test/`, `src/vs/workbench/test/browser/parts/editor/editorInput.test.ts` | Cover the upstream seams above; tests of fork behaviour live in `src/vs/workbench/contrib/latent/test/`. |
 
 ## Fork entry points
