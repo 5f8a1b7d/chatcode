@@ -25,6 +25,13 @@ export class ArtifactStore {
 		return artifact;
 	}
 
+	async remove(id: string): Promise<void> {
+		const artifact = await this.database.get<{ path: string }>('SELECT path FROM artifacts WHERE id = ?', [id]);
+		if (!artifact) { return; }
+		await fs.rm(artifact.path, { force: true });
+		await this.database.run('DELETE FROM artifacts WHERE id = ?', [id]);
+	}
+
 	async list(filter?: { sessionId?: string; botId?: string }): Promise<IArtifact[]> {
 		const conditions: string[] = [];
 		const params: unknown[] = [];

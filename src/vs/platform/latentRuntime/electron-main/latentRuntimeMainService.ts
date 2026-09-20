@@ -8,6 +8,7 @@ import { timeout } from '../../../base/common/async.js';
 import { Emitter, Event } from '../../../base/common/event.js';
 import { Disposable, MutableDisposable } from '../../../base/common/lifecycle.js';
 import { FileAccess } from '../../../base/common/network.js';
+import { equals } from '../../../base/common/objects.js';
 import { isWindows } from '../../../base/common/platform.js';
 import { IEnvironmentMainService } from '../../environment/electron-main/environmentMainService.js';
 import { ILifecycleMainService } from '../../lifecycle/electron-main/lifecycleMainService.js';
@@ -75,7 +76,9 @@ export class LatentRuntimeMainService extends Disposable implements ILatentRunti
 	async getState(): Promise<IRuntimeState> {
 		if (this.client.value?.isConnected) {
 			try {
-				this.setState(await this.client.value.call<IRuntimeState>(RuntimeMethods.GetState));
+				// Background registration is owned here, not by the runtime process.
+				const state = await this.client.value.call<IRuntimeState>(RuntimeMethods.GetState);
+				this.setState({ ...state, connected: true, backgroundEnabled: this.state.backgroundEnabled });
 			} catch {
 				// fall through to the cached state
 			}
@@ -201,7 +204,14 @@ export class LatentRuntimeMainService extends Disposable implements ILatentRunti
 		return this.client.value!.call<T>(method, params);
 	}
 
+	/**
+	 * Reading the state must not look like a change: listeners that refresh on
+	 * `onDidChangeState` and read the state while refreshing would otherwise loop.
+	 */
 	private setState(state: IRuntimeState): void {
+		if (equals(this.state, state)) {
+			return;
+		}
 		this.state = state;
 		this._onDidChangeState.fire(state);
 	}

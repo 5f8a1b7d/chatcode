@@ -15,8 +15,16 @@ export interface IGatewayHealth {
 	readonly pendingDeliveries: number;
 }
 
+export interface IFunesState {
+	readonly available: boolean;
+	readonly version?: string;
+	readonly indexedAt?: number;
+	readonly lastError?: string;
+}
+
 export interface IRuntimeState {
 	readonly connected: boolean;
+	readonly funes?: IFunesState;
 	readonly backgroundEnabled: boolean;
 	readonly version: string;
 	readonly pid?: number;
@@ -67,10 +75,22 @@ export interface IBotConfig {
 	readonly id: string;
 	readonly name: string;
 	readonly systemPrompt: string;
+	readonly pinned?: boolean;
+	readonly hidden?: boolean;
+	readonly section?: string;
 	readonly execution: { readonly kind: 'provider'; readonly modelBindingId: string } | { readonly kind: 'harness'; readonly harness: 'copilot' | 'codex' | 'claude' };
 	readonly toolAuthorizationScope: IToolAuthorizationScope;
 	readonly capabilities: readonly string[];
 	readonly workingDirectory?: string;
+	/** Bots this Bot may delegate work to with the built-in `handoff` tool. */
+	readonly handoffTargets?: readonly string[];
+}
+
+/** A default Bot contributed by an extension; the runtime creates it once and can restore it later. */
+export interface IBotPreset {
+	/** Contributor of the preset, for example an extension id. */
+	readonly owner: string;
+	readonly bot: IBotConfig;
 }
 
 export interface IBotInput {
@@ -111,6 +131,7 @@ export interface IRuntimeApprovalRequest {
 export type ApprovalDecision = 'allow' | 'deny' | 'allowScope';
 
 export interface IRecallOptions {
+	readonly excludeSessionId?: string;
 	readonly k?: number;
 	readonly candidates?: number;
 	readonly halfLifeDays?: number;
@@ -151,6 +172,7 @@ export interface IIndexedTurn {
 
 export interface IMemoryWriteOp {
 	readonly action: 'add' | 'replace' | 'remove';
+	readonly operations?: readonly { readonly action: 'add' | 'replace' | 'remove'; readonly content?: string; readonly oldText?: string }[];
 	readonly target: 'memory' | 'user';
 	readonly content?: string;
 	readonly oldText?: string;
@@ -164,6 +186,7 @@ export interface IMemoryWriteResult {
 }
 
 export interface IMemorySnapshot {
+	readonly directory?: string;
 	readonly memory: string;
 	readonly user: string;
 	readonly entries: readonly { readonly file: string; readonly title: string; readonly updatedAt: number }[];
@@ -249,7 +272,11 @@ export const RuntimeMethods = {
 	UpsertBot: 'bots.upsert',
 	RemoveBot: 'bots.remove',
 	RunBot: 'bots.run',
+	RegisterBotPresets: 'bots.presets.register',
+	ListBotPresets: 'bots.presets.list',
+	RestoreBotPresets: 'bots.presets.restore',
 	ListSessions: 'sessions.list',
+	CreateSession: 'sessions.create',
 	GetSessionTurns: 'sessions.turns',
 	ListApprovals: 'approvals.list',
 	RespondToApproval: 'approvals.respond',
@@ -260,12 +287,18 @@ export const RuntimeMethods = {
 	MemoryWrite: 'memory.write',
 	MemoryConfirm: 'memory.confirmStaged',
 	MemorySnapshot: 'memory.snapshot',
+	MemoryPrompt: 'memory.prompt',
+	MemoryReview: 'memory.review',
+	MemoryCheckpoint: 'memory.checkpoint',
+	SessionSearch: 'memory.sessionSearch',
 	ListMemoryAdapters: 'memory.adapters.list',
 	SetMemoryAdapterEnabled: 'memory.adapters.setEnabled',
 	RebuildRecallIndex: 'memory.rebuildIndex',
 	ListCapabilities: 'capabilities.list',
+	RemoveCapability: 'capabilities.remove',
 	InstallCapability: 'capabilities.install',
 	ListArtifacts: 'artifacts.list',
+	RemoveArtifact: 'artifacts.remove',
 	ListJobs: 'jobs.list',
 	UpsertJob: 'jobs.upsert',
 	RemoveJob: 'jobs.remove',
@@ -274,6 +307,7 @@ export const RuntimeMethods = {
 	Deliver: 'gateways.deliver',
 	AddArtifact: 'artifacts.add',
 	CompareMemoryAdapter: 'memory.adapters.compare',
+	ResolveMemoryComparison: 'memory.adapters.resolve',
 	RegisterPlugin: 'plugins.register',
 	ListPlugins: 'plugins.list',
 	SetPluginSecret: 'plugins.setSecret',

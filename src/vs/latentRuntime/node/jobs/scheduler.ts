@@ -17,6 +17,7 @@ export class JobScheduler {
 	private timer: ReturnType<typeof setInterval> | undefined;
 	private readonly startedAt = Date.now();
 	private lastTick = Date.now();
+	private readonly runningJobs = new Set<string>();
 
 	constructor(private readonly jobs: JsonListStore<IScheduledJob>, private readonly database: RuntimeDatabase, private readonly host: ISchedulerHost) { }
 
@@ -86,11 +87,12 @@ export class JobScheduler {
 	private async execute(job: IScheduledJob, lateness: IJobExecution['lateness']): Promise<{ sessionId: string } | undefined> {
 		const id = randomUUID();
 		const startedAt = Date.now();
-		if (this.host.isBotRunning(job.botId) && !job.allowOverlap) {
+		if ((this.runningJobs.has(job.id) || this.host.isBotRunning(job.botId)) && !job.allowOverlap) {
 			await this.database.run('INSERT INTO jobs_executions (id, job_id, started_at, finished_at, status, lateness) VALUES (?, ?, ?, ?, ?, ?)', [id, job.id, startedAt, startedAt, 'skipped', lateness]);
 			await this.advance(job, startedAt, 'skipped');
 			return undefined;
 		}
+		this.runningJobs.add(job.id);
 		await this.database.run('INSERT INTO jobs_executions (id, job_id, started_at, status, lateness) VALUES (?, ?, ?, ?, ?)', [id, job.id, startedAt, 'running', lateness]);
 		try {
 			const result = await this.host.runJob(job, lateness);
@@ -101,13 +103,17 @@ export class JobScheduler {
 			await this.database.run('UPDATE jobs_executions SET finished_at = ?, status = ?, error = ? WHERE id = ?', [Date.now(), 'failed', error instanceof Error ? error.message : String(error), id]);
 			await this.advance(job, startedAt, 'failed');
 			return undefined;
+		} finally {
+			this.runningJobs.delete(job.id);
 		}
 	}
 
 	private async advance(job: IScheduledJob, ranAt: number, status: IScheduledJob['lastStatus']): Promise<void> {
-		const parsed = parseSchedule(job.schedule);
-		const next = computeNextRun(parsed, Date.now(), ranAt);
-		await this.jobs.upsert({ ...job, lastRunAt: ranAt, lastStatus: status, nextRunAt: next, enabled: parsed.kind === 'at' ? false : job.enabled });
+		const current = this.jobs.get(job.id);
+		if (!current) { this.host.onChange(); return; }
+		const parsed = parseSchedule(current.schedule);
+		const next = current.enabled ? computeNextRun(parsed, Date.now(), ranAt) : undefined;
+		await this.jobs.upsert({ ...current, lastRunAt: ranAt, lastStatus: status, nextRunAt: next, enabled: parsed.kind === 'at' ? false : current.enabled });
 		this.host.onChange();
 	}
 }

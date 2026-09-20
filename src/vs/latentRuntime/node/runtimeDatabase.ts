@@ -20,6 +20,8 @@ export class RuntimeDatabase {
 	private async migrate(): Promise<void> {
 		await this.exec(`
 			CREATE TABLE IF NOT EXISTS sessions (id TEXT PRIMARY KEY, bot_id TEXT NOT NULL, title TEXT NOT NULL, origin TEXT NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
+			CREATE TABLE IF NOT EXISTS session_memory (session_id TEXT PRIMARY KEY, prompt TEXT NOT NULL);
+			CREATE TABLE IF NOT EXISTS messages (id INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT NOT NULL, source_seq INTEGER NOT NULL, role TEXT NOT NULL, content TEXT NOT NULL, timestamp REAL NOT NULL, tool_call_id TEXT, tool_calls TEXT, tool_name TEXT, reasoning TEXT, reasoning_content TEXT, UNIQUE(session_id, source_seq, content));
 			CREATE TABLE IF NOT EXISTS turns (session_id TEXT NOT NULL, seq INTEGER NOT NULL, role TEXT NOT NULL, text TEXT NOT NULL, ts INTEGER NOT NULL, PRIMARY KEY (session_id, seq));
 			CREATE TABLE IF NOT EXISTS jobs_executions (id TEXT PRIMARY KEY, job_id TEXT NOT NULL, started_at INTEGER NOT NULL, finished_at INTEGER, status TEXT NOT NULL, lateness TEXT NOT NULL, session_id TEXT, error TEXT);
 			CREATE TABLE IF NOT EXISTS artifacts (id TEXT PRIMARY KEY, session_id TEXT NOT NULL, bot_id TEXT NOT NULL, name TEXT NOT NULL, path TEXT NOT NULL, mime_type TEXT NOT NULL, size INTEGER NOT NULL, created_at INTEGER NOT NULL);

@@ -26,6 +26,6 @@ export function formatAgentHit(hit: Omit<IRecallHit, 'agentFormat'>): string {
 
 /** Combines BM25 rank (lower is better in FTS5) with recency into one descending score. */
 export function combineScores(bm25Rank: number, timestamp: number, now: number, halfLifeDays: number): number {
-	const relevance = 1 / (1 + Math.max(0, -bm25Rank));
-	return Number((relevance * recencyWeight(timestamp, now, halfLifeDays)).toFixed(6));
+	const relevance = Math.max(Number.EPSILON, -bm25Rank);
+	return relevance * recencyWeight(timestamp, now, halfLifeDays);
 }
