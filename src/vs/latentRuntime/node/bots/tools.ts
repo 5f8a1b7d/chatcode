@@ -17,7 +17,9 @@ export const builtinTools: Record<string, IRuntimeTool> = {
 		run: async (args, context) => {
 			const target = resolveInside(context.workingDirectory, String(args.path));
 			await fs.mkdir(join(target, '..'), { recursive: true });
-			await fs.writeFile(target, String(args.content ?? ''), 'utf8');
+			const content = String(args.content ?? '');
+			await fs.writeFile(target, content, 'utf8');
+			await context.artifact(String(args.path), content, mimeTypeForPath(String(args.path)), { replace: true });
 			return `wrote ${String(args.path)}`;
 		},
 	},
@@ -27,8 +29,8 @@ export const builtinTools: Record<string, IRuntimeTool> = {
 	},
 	http_fetch: {
 		definition: { name: 'http_fetch', description: 'Fetch a URL with GET and return up to 50k characters of the body.', parameters: { type: 'object', properties: { url: { type: 'string' } }, required: ['url'] } },
-		run: async args => {
-			const response = await fetch(String(args.url));
+		run: async (args, context) => {
+			const response = await fetch(String(args.url), { signal: context.signal });
 			return `HTTP ${response.status}\n${(await response.text()).slice(0, 50_000)}`;
 		},
 	},
@@ -52,7 +54,30 @@ export const builtinTools: Record<string, IRuntimeTool> = {
 		definition: { name: 'create_artifact', description: 'Store a produced file as an artifact of this run.', parameters: { type: 'object', properties: { name: { type: 'string' }, content: { type: 'string' }, mimeType: { type: 'string' } }, required: ['name', 'content'] } },
 		run: (args, context) => context.artifact(String(args.name), String(args.content ?? ''), typeof args.mimeType === 'string' ? args.mimeType : 'text/plain'),
 	},
+	ask_user: {
+		definition: {
+			name: 'ask_user',
+			description: 'Ask the user one or more blocking clarification questions. Use choices when a bounded answer is useful; allow free text otherwise.',
+			parameters: {
+				type: 'object',
+				properties: {
+					question: { type: 'string' },
+					choices: { type: 'array', items: { type: 'string' } },
+					multiSelect: { type: 'boolean' },
+					questions: { type: 'array', items: { type: 'object', properties: { id: { type: 'string' }, question: { type: 'string' }, choices: { type: 'array', items: { type: 'string' } }, multiSelect: { type: 'boolean' } }, required: ['question'] } },
+				},
+			},
+		},
+		run: (args, context) => context.askUser ? context.askUser(args) : Promise.resolve('The user-question interface is unavailable.'),
+	},
 };
+
+export function mimeTypeForPath(path: string): string {
+	const extension = path.toLowerCase().match(/\.[^.\/]+$/)?.[0];
+	return ({
+		'.bmp': 'image/bmp', '.css': 'text/css', '.csv': 'text/csv', '.gif': 'image/gif', '.htm': 'text/html', '.html': 'text/html', '.jpeg': 'image/jpeg', '.jpg': 'image/jpeg', '.js': 'text/javascript', '.json': 'application/json', '.lean': 'text/x-lean', '.md': 'text/markdown', '.pdf': 'application/pdf', '.png': 'image/png', '.py': 'text/x-python', '.svg': 'image/svg+xml', '.tex': 'text/x-tex', '.ts': 'text/typescript', '.tsx': 'text/typescript', '.txt': 'text/plain', '.webp': 'image/webp',
+	} as Record<string, string>)[extension ?? ''] ?? 'application/octet-stream';
+}
 
 /**
  * The `handoff` tool: a Bot delegates work to one of its `handoffTargets` and waits

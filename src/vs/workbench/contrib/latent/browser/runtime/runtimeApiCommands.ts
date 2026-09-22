@@ -2,7 +2,7 @@
 import { CommandsRegistry } from '../../../../../platform/commands/common/commands.js';
 import { IConfigurationService } from '../../../../../platform/configuration/common/configuration.js';
 import { ServicesAccessor } from '../../../../../platform/instantiation/common/instantiation.js';
-import { ApprovalDecision, IBotConfig, IBotInput, IGatewayConfig, IMemoryWriteOp, IModelBinding, IRecallOptions } from '../../../../../platform/latentRuntime/common/runtimeProtocol.js';
+import { ApprovalDecision, IBotConfig, IBotInput, ICapabilitySource, IGatewayConfig, IMemoryWriteOp, IModelBinding, IRecallOptions, IScheduledJob } from '../../../../../platform/latentRuntime/common/runtimeProtocol.js';
 import { IMemoryComparisonEntry, IRuntimePluginRecord, MemoryComparisonDecision } from '../../../../../platform/latentRuntime/common/runtimePlugin.js';
 import { LatentSettings } from '../latentConfiguration.js';
 import { IManagedRuntimeService } from './managedRuntimeService.js';
@@ -20,6 +20,7 @@ const handlers: Record<string, RuntimeApiHandler> = {
 	listBots: runtime => runtime.listBots(),
 	upsertBot: (runtime, config: IBotConfig) => runtime.upsertBot(config),
 	removeBot: (runtime, id: string) => runtime.removeBot(id),
+	interruptBot: (runtime, requestId: string) => runtime.interruptBot(requestId),
 	runBot: (runtime, botId: string, input: IBotInput) => runtime.runBot(botId, input),
 	registerBotPresets: (runtime, owner: string, bots: IBotConfig[]) => runtime.registerBotPresets(owner, bots),
 	listBotPresets: runtime => runtime.listBotPresets(),
@@ -28,11 +29,17 @@ const handlers: Record<string, RuntimeApiHandler> = {
 	getSessionTurns: (runtime, sessionId: string) => runtime.getSessionTurns(sessionId),
 	listApprovals: runtime => runtime.listApprovals(),
 	respondToApproval: (runtime, id: string, decision: ApprovalDecision) => runtime.respondToApproval(id, decision),
+	listQuestions: runtime => runtime.listQuestions(),
+	respondToQuestion: (runtime, id: string, answers: Readonly<Record<string, string>>) => runtime.respondToQuestion(id, answers),
 	listGateways: runtime => runtime.listGateways(),
 	upsertGateway: (runtime, config: IGatewayConfig, secret?: string) => runtime.upsertGateway(config, secret),
 	removeGateway: (runtime, id: string) => runtime.removeGateway(id),
 	deliver: (runtime, gatewayId: string, chatId: string, text: string) => runtime.deliver(gatewayId, chatId, text),
 	setModelBinding: (runtime, id: string, binding: IModelBinding) => runtime.setModelBinding(id, binding),
+	listModelBindings: runtime => runtime.listModelBindings(),
+	listCapabilities: runtime => runtime.listCapabilities(),
+	installCapability: (runtime, source: ICapabilitySource) => runtime.installCapability(source),
+	removeCapability: (runtime, id: string) => runtime.removeCapability(id),
 	recall: (runtime, query: string, options?: IRecallOptions) => runtime.recall(query, options),
 	memoryReview: (runtime, response?: string) => runtime.memoryReview(response),
 	memoryCheckpoint: (runtime, sessionId: string, messages: { role: 'user' | 'assistant' | 'tool'; text: string }[]) => runtime.memoryCheckpoint(sessionId, messages),
@@ -47,6 +54,11 @@ const handlers: Record<string, RuntimeApiHandler> = {
 	resolveMemoryComparison: (runtime, id: string, entry: IMemoryComparisonEntry, decision: MemoryComparisonDecision) => runtime.resolveMemoryComparison(id, entry, decision),
 	listArtifacts: (runtime, filter?: { sessionId?: string; botId?: string }) => runtime.listArtifacts(filter),
 	addArtifact: (runtime, artifact: { sessionId?: string; botId: string; name: string; content?: string; contentBase64?: string; mimeType?: string }) => runtime.addArtifact(artifact),
+	listJobs: runtime => runtime.listJobs(),
+	upsertJob: (runtime, job: IScheduledJob) => runtime.upsertJob(job),
+	removeJob: (runtime, id: string) => runtime.removeJob(id),
+	runJobNow: (runtime, id: string) => runtime.runJobNow(id),
+	listJobExecutions: (runtime, jobId?: string) => runtime.listJobExecutions(jobId),
 	registerPlugin: (runtime, record: IRuntimePluginRecord) => runtime.registerPlugin(record),
 	listPlugins: runtime => runtime.listPlugins(),
 	setPluginSecret: (runtime, pluginId: string, key: string, value?: string) => runtime.setPluginSecret(pluginId, key, value),
