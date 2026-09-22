@@ -14,7 +14,7 @@ import { localize, localize2 } from '../../../../../nls.js';
 import { IClipboardService } from '../../../../../platform/clipboard/common/clipboardService.js';
 import { ICommandService } from '../../../../../platform/commands/common/commands.js';
 import { IConfigurationService } from '../../../../../platform/configuration/common/configuration.js';
-import { IContextKeyService } from '../../../../../platform/contextkey/common/contextkey.js';
+import { ContextKeyExpr, IContextKeyService } from '../../../../../platform/contextkey/common/contextkey.js';
 import { IContextMenuService } from '../../../../../platform/contextview/browser/contextView.js';
 import { IDialogService } from '../../../../../platform/dialogs/common/dialogs.js';
 import { IHoverService } from '../../../../../platform/hover/browser/hover.js';
@@ -32,6 +32,7 @@ import { ViewPaneContainer } from '../../../../browser/parts/views/viewPaneConta
 import { Extensions, IViewContainersRegistry, IViewDescriptorService, IViewsRegistry, ViewContainerLocation } from '../../../../common/views.js';
 import { IEditorService } from '../../../../services/editor/common/editorService.js';
 import { IThreadService } from '../../common/threads.js';
+import { LatentDerivativeBuildContext } from '../latentProduct.js';
 import { ISideChatOpener } from '../sideChat/sideChatOpener.js';
 import { IManagedRuntimeService } from './managedRuntimeService.js';
 
@@ -245,7 +246,11 @@ class RuntimeView extends ViewPane {
 				const visibleArtifacts = this.artifactFilter === 'images' ? imageArtifacts : this.artifactFilter === 'files' ? fileArtifacts : this.artifactFilter === 'links' ? linkArtifacts : artifacts;
 				if (!visibleArtifacts.length) { this.empty(this.contentBody, localize('runtime.noArtifacts', "Generated images and file outputs will appear here as sessions produce them.")); }
 				for (const artifact of visibleArtifacts) {
-					this.row(this.contentBody, artifact.name, `${artifact.mimeType} · ${Math.ceil(artifact.size / 1024)} KB`, [
+					const session = sessions.find(candidate => candidate.sessionId === artifact.sessionId);
+					const bot = bots.find(candidate => candidate.id === artifact.botId);
+					const group = /^\[Group chat: "([^"]+)"\]/.exec(session?.title ?? '')?.[1];
+					const source = group ? localize('runtime.groupArtifactSource', "{0} · {1} group", bot?.name ?? artifact.botId, group) : bot?.name ?? artifact.botId;
+					this.row(this.contentBody, artifact.name, `${source} · ${artifact.mimeType} · ${Math.ceil(artifact.size / 1024)} KB`, [
 						{ label: localize('runtime.open', "Open"), run: () => this.editors.openEditor({ resource: URI.file(artifact.path) }) },
 						{ label: localize('runtime.source', "Open Source Session"), enabled: !!artifact.sessionId, run: () => this.openSession(artifact.sessionId) },
 						{ label: localize('runtime.copyPath', "Copy Path"), separatorBefore: true, run: () => this.clipboard.writeText(artifact.path) },
@@ -352,9 +357,12 @@ for (const [surface, title, icon, order] of [
 	const container = Registry.as<IViewContainersRegistry>(Extensions.ViewContainersRegistry).registerViewContainer({
 		id: containerId, title, icon, order,
 		ctorDescriptor: new SyncDescriptor(ViewPaneContainer, [containerId, { mergeViewWithContainerWhenSingleView: true }]),
+		hideIfEmpty: surface === 'bots',
 		alwaysUseContainerInfo: true,
 	}, ViewContainerLocation.Sidebar);
 	Registry.as<IViewsRegistry>(Extensions.ViewsRegistry).registerViews([{
-		id: `latent.${surface}`, name: title, ctorDescriptor: new SyncDescriptor(RuntimeView, [surface]), canToggleVisibility: true, canMoveView: true,
+		id: `latent.${surface}`, name: title, ctorDescriptor: new SyncDescriptor(RuntimeView, [surface]),
+		when: surface === 'bots' ? ContextKeyExpr.not(LatentDerivativeBuildContext.key) : undefined,
+		canToggleVisibility: true, canMoveView: true,
 	}], container);
 }
