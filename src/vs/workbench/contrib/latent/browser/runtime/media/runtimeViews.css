@@ -1,0 +1,26 @@
+.latent-runtime-view .latent-runtime-body { box-sizing: border-box; padding: 8px; }
+.latent-runtime-view .latent-runtime-toolbar { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+.latent-runtime-view button { font: inherit; cursor: pointer; }
+.latent-runtime-view button:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: -1px; }
+.latent-runtime-view button:disabled { opacity: .5; cursor: default; }
+.latent-runtime-view .latent-runtime-primary,
+.latent-runtime-view .latent-runtime-secondary { border: 1px solid var(--vscode-button-border, transparent); border-radius: 4px; padding: 5px 9px; background: var(--vscode-button-background); color: var(--vscode-button-foreground); }
+.latent-runtime-view .latent-runtime-secondary { background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); }
+.latent-runtime-view .latent-runtime-primary:hover { background: var(--vscode-button-hoverBackground); }
+.latent-runtime-view .latent-runtime-secondary:hover { background: var(--vscode-button-secondaryHoverBackground); }
+.latent-runtime-view .latent-runtime-filter { border: 0; border-bottom: 1px solid transparent; padding: 4px 2px; background: transparent; color: var(--vscode-descriptionForeground); }
+.latent-runtime-view .latent-runtime-filter:hover { color: var(--vscode-foreground); }
+.latent-runtime-view .latent-runtime-filter[aria-pressed='true'] { border-bottom-color: var(--vscode-focusBorder); color: var(--vscode-foreground); }
+.latent-runtime-view .latent-runtime-row { display: flex; align-items: center; border-radius: 4px; margin-bottom: 2px; }
+.latent-runtime-view .latent-runtime-row:hover,
+.latent-runtime-view .latent-runtime-row:focus-within { background: var(--vscode-list-hoverBackground); }
+.latent-runtime-view .latent-runtime-item { display: flex; align-items: flex-start; gap: 8px; flex: 1; min-width: 0; padding: 9px 6px; border: none; background: transparent; color: var(--vscode-foreground); text-align: left; }
+.latent-runtime-view .latent-runtime-item > .codicon { padding-top: 2px; color: var(--vscode-descriptionForeground); }
+.latent-runtime-view .latent-runtime-label { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.latent-runtime-view .latent-runtime-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.latent-runtime-view .latent-runtime-detail { color: var(--vscode-descriptionForeground); font-size: 11px; overflow-wrap: anywhere; }
+.latent-runtime-view .latent-runtime-more { flex-shrink: 0; border: 0; background: transparent; color: var(--vscode-icon-foreground); padding: 6px; opacity: 0; }
+.latent-runtime-view .latent-runtime-row:hover .latent-runtime-more,
+.latent-runtime-view .latent-runtime-row:focus-within .latent-runtime-more { opacity: 1; }
+.latent-runtime-view h3 { font-size: 11px; font-weight: 600; text-transform: uppercase; margin: 20px 6px 6px; color: var(--vscode-descriptionForeground); }
+.latent-runtime-view .latent-runtime-empty { color: var(--vscode-descriptionForeground); line-height: 1.5; padding: 0 6px; }

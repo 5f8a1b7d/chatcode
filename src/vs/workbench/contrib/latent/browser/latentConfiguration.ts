@@ -47,7 +47,7 @@ Registry.as<IConfigurationRegistry>(ConfigurationExtensions.Configuration).regis
 		},
 		[LatentSettings.RuntimeEnabled]: {
 			type: 'boolean',
-			default: false,
+			default: true,
 			description: localize('latent.runtime.enabled', "Start the Latent managed runtime that hosts gateways, bots, memory, and scheduled jobs."),
 		},
 		[LatentSettings.RuntimeBackgroundEnabled]: {
