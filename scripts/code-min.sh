@@ -71,7 +71,7 @@ else
 	CODE="./.build/electron/$NAME"
 fi
 
-if [[ ! -x "$CODE" || ! -f out/vs/code/electron-main/main.js ]]; then
+if [[ ! -x "$CODE" || ! -f out/main.js ]]; then
 	echo "Code OSS build output is missing." >&2
 	echo "Run './scripts/code-min.sh --prelaunch' once, or run 'npm run compile'." >&2
 	exit 1

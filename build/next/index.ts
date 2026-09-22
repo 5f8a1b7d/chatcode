@@ -238,7 +238,9 @@ function getCssBundleEntryPointsForTarget(target: BuildTarget): Set<string> {
 async function cleanDir(dir: string): Promise<void> {
 	const fullPath = path.join(REPO_ROOT, dir);
 	console.log(`[clean] ${dir}`);
-	await fs.promises.rm(fullPath, { recursive: true, force: true });
+	// File watchers can briefly recreate or retain entries while a development
+	// build is being replaced. Let Node retry transient ENOTEMPTY/EBUSY errors.
+	await fs.promises.rm(fullPath, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 	await fs.promises.mkdir(fullPath, { recursive: true });
 }
 
