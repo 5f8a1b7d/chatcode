@@ -61,10 +61,15 @@ export interface IRuntimeToolContext {
 	readonly memoryWrite: (target: 'memory' | 'user', content: string) => Promise<string>;
 	readonly memoryManage?: (op: IMemoryWriteOp) => Promise<string>;
 	readonly sessionSearch?: (options: { query?: string; sessionId?: string; from?: number; to?: number }) => Promise<string>;
-	readonly artifact: (name: string, content: string, mimeType: string) => Promise<string>;
+	/**
+	 * Persists output produced by this tool and adds it to the shared Artifacts index.
+	 * `replace` keeps one current entry for repeatedly written files such as meeting notes.
+	 */
+	readonly artifact: (name: string, content: string | Uint8Array, mimeType: string, options?: { readonly replace?: boolean }) => Promise<string>;
 	readonly runBot: (botId: string, input: IBotInput) => Promise<{ readonly sessionId: string; readonly text: string }>;
 	readonly log: (message: string) => void;
 	readonly signal?: AbortSignal;
+	readonly askUser?: (input: { readonly question?: string; readonly choices?: readonly string[]; readonly multiSelect?: boolean; readonly questions?: readonly { readonly id?: string; readonly question?: string; readonly choices?: readonly string[]; readonly multiSelect?: boolean }[] }) => Promise<string>;
 }
 
 export interface IRuntimeTool {

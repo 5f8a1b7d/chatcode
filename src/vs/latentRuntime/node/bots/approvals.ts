@@ -21,12 +21,15 @@ export class ApprovalService {
 		return [...this.pending.values()].map(entry => entry.request);
 	}
 
-	request(input: Omit<IRuntimeApprovalRequest, 'id' | 'expiresAt'>): Promise<ApprovalDecision | 'timeout'> {
+	request(input: Omit<IRuntimeApprovalRequest, 'id' | 'expiresAt'>, signal?: AbortSignal): Promise<ApprovalDecision | 'timeout'> {
+		if (signal?.aborted) { return Promise.resolve('deny'); }
 		const id = randomUUID();
 		const request: IRuntimeApprovalRequest = { ...input, id, expiresAt: Date.now() + this.timeoutMs() };
 		return new Promise(resolve => {
 			const timer = setTimeout(() => this.resolve(id, 'timeout'), this.timeoutMs());
-			this.pending.set(id, { request, resolve, timer });
+			const abort = () => this.resolve(id, 'deny');
+			this.pending.set(id, { request, resolve: decision => { signal?.removeEventListener('abort', abort); resolve(decision); }, timer });
+			signal?.addEventListener('abort', abort, { once: true });
 			this.notify({ kind: 'approvalRequested', request });
 		});
 	}

@@ -1,14 +1,15 @@
 /* eslint-disable header/header */
 import { promises as fs } from 'fs';
-import { join } from 'path';
+import { join, resolve, sep } from 'path';
 import { JsonRpcError, JsonRpcErrorCodes } from '../../platform/latentRuntime/common/jsonRpc.js';
-import { ApprovalDecision, IBotConfig, IBotInput, ICapabilitySource, IGatewayConfig, IIndexedTurn, IMemoryWriteOp, IModelBinding, IRecallOptions, IRuntimeSessionRef, IRuntimeSessionTurn, IRuntimeState, IScheduledJob, RuntimeMethods, RuntimeNotification, RUNTIME_PROTOCOL_VERSION } from '../../platform/latentRuntime/common/runtimeProtocol.js';
+import { ApprovalDecision, IBotAttachment, IBotConfig, IBotInput, ICapabilitySource, IGatewayConfig, IIndexedTurn, IMemoryWriteOp, IModelBinding, IRecallOptions, IRuntimeSessionRef, IRuntimeSessionTurn, IRuntimeState, IScheduledJob, RuntimeMethods, RuntimeNotification, RUNTIME_PROTOCOL_VERSION } from '../../platform/latentRuntime/common/runtimeProtocol.js';
 import { IInboundMessage, IMemoryComparisonEntry, IRuntimePluginRecord, MemoryComparisonDecision } from '../../platform/latentRuntime/common/runtimePlugin.js';
-import { ArtifactStore } from './artifacts/artifactStore.js';
+import { ArtifactStore, writtenArtifactPath } from './artifacts/artifactStore.js';
 import { ApprovalService } from './bots/approvals.js';
+import { QuestionService } from './bots/questions.js';
 import { BotPresets, IBotPresetRecord, isBotPresetRecord } from './bots/botPresets.js';
 import { BotRunner, SessionStore } from './bots/botRunner.js';
-import { handoffTool, ToolRegistry } from './bots/tools.js';
+import { handoffTool, mimeTypeForPath, ToolRegistry } from './bots/tools.js';
 import { SkillRegistry } from './capabilities/skills.js';
 import { GatewayRegistry } from './gateway/gatewayRegistry.js';
 import { JobScheduler } from './jobs/scheduler.js';
@@ -44,6 +45,14 @@ function isBotConfig(value: unknown): value is IBotConfig {
 		&& (candidate.handoffTargets === undefined || Array.isArray(candidate.handoffTargets) && candidate.handoffTargets.every(target => typeof target === 'string'));
 }
 
+const maxAttachmentBytes = 15_000_000;
+function isBotAttachment(value: unknown): value is IBotAttachment {
+	const candidate = value as Partial<IBotAttachment>;
+	if (typeof candidate !== 'object' || candidate === null || typeof candidate.id !== 'string' || typeof candidate.name !== 'string' || !candidate.name || candidate.name.length > 240 || typeof candidate.mimeType !== 'string' || !candidate.mimeType || candidate.mimeType.length > 120 || typeof candidate.dataUrl !== 'string' || typeof candidate.size !== 'number' || candidate.size < 0 || candidate.size > maxAttachmentBytes) { return false; }
+	const match = /^data:([^;,]+);base64,([A-Za-z0-9+/=]*)$/.exec(candidate.dataUrl);
+	return !!match && match[1] === candidate.mimeType && Buffer.byteLength(match[2], 'base64') === candidate.size;
+}
+
 function isMemoryComparisonEntry(value: unknown): value is IMemoryComparisonEntry {
 	const candidate = value as Partial<IMemoryComparisonEntry>;
 	return typeof candidate === 'object' && candidate !== null && (candidate.target === 'memory' || candidate.target === 'user') && typeof candidate.key === 'string'
@@ -74,6 +83,7 @@ export class RuntimeServer {
 	private adapterRecords!: JsonListStore<{ readonly id: string; readonly enabled: boolean }>;
 	private gatewayRegistry!: GatewayRegistry;
 	private approvals!: ApprovalService;
+	private questions!: QuestionService;
 	private sessions!: SessionStore;
 	private runner!: BotRunner;
 	private memory!: MemoryStore;
@@ -119,7 +129,9 @@ export class RuntimeServer {
 		this.skills = new SkillRegistry(this.home);
 		this.artifacts = new ArtifactStore(this.home, this.database);
 		this.approvals = new ApprovalService(() => (this.settings.get('settings')?.approvalTimeoutSeconds ?? 120) * 1000, event => this.notify(event));
+		this.questions = new QuestionService(() => (this.settings.get('settings')?.approvalTimeoutSeconds ?? 120) * 1000, event => this.notify(event));
 		this.sessions = new SessionStore(this.database);
+		await this.backfillWrittenArtifacts();
 		this.runner = new BotRunner(this.sessions, {
 			approvals: this.approvals,
 			tools: this.tools,
@@ -143,10 +155,21 @@ export class RuntimeServer {
 					const result = await this.writeMemory({ action: 'add', target, content });
 					return result.message ?? 'ok';
 				},
-				artifact: async (name, content, mimeType) => (await this.artifacts.add(session.sessionId, bot.id, name, content, mimeType)).path,
+				artifact: async (name, content, mimeType, options) => {
+					const artifact = await this.artifacts.add(session.sessionId, bot.id, name, content, mimeType, options);
+					this.publishState();
+					return artifact.path;
+				},
 			}),
 			onTurn: (session, turn) => this.onTurn(session, turn),
 			approvalTimeoutMs: (this.settings.get('settings')?.approvalTimeoutSeconds ?? 120) * 1000,
+			askUser: async (bot, session, requestId, input, signal) => {
+				const raw = Array.isArray(input.questions) && input.questions.length ? input.questions : [{ id: 'answer', question: input.question, choices: input.choices, multiSelect: input.multiSelect }];
+				const questions = raw.slice(0, 3).map((question, index) => ({ id: String(question.id || `q${index + 1}`), question: String(question.question || '').trim(), choices: Array.isArray(question.choices) ? question.choices.map(String).filter(Boolean).slice(0, 12) : undefined, multiSelect: !!question.multiSelect })).filter(question => question.question);
+				if (!questions.length) { return 'No valid question was provided.'; }
+				const answers = await this.questions.request({ botId: bot.id, sessionId: session.sessionId, requestId, questions }, signal);
+				return answers ? questions.map(question => `${question.question}: ${answers[question.id] || '(no answer)'}`).join('\n') : 'The question was cancelled or timed out.';
+			},
 			log: this.log,
 		});
 		this.gatewayRegistry = new GatewayRegistry(this.database, this.secrets, this.log, () => this.publishState());
@@ -268,7 +291,8 @@ export class RuntimeServer {
 		if (!bot) {
 			throw new Error(`Job ${job.name} refers to a missing bot ${job.botId}.`);
 		}
-		const result = await this.runner.run(bot, { text: `${job.prompt}\n\n(scheduled job "${job.name}", ${lateness})` }, 'job');
+		const canonical = job.deliverToBotChat ? (await this.sessions.list()).find(session => session.botId === bot.id && session.title === 'Bot Chat') : undefined;
+		const result = await this.runner.run(bot, { text: `${job.prompt}\n\n(scheduled job "${job.name}", ${lateness})`, sessionId: canonical?.sessionId, title: job.deliverToBotChat ? 'Bot Chat' : undefined }, 'job');
 		if (job.deliverTo) {
 			await this.gatewayRegistry.deliver(job.deliverTo.gatewayId, job.deliverTo.chatId, result.text || '(no response)');
 		}
@@ -286,11 +310,33 @@ export class RuntimeServer {
 			gateways: await this.gatewayRegistry.health(),
 			nextJobRuns: this.scheduler.nextRuns(),
 			pendingApprovals: this.approvals.list().length,
+			pendingQuestions: this.questions.list().length,
 		};
 	}
 
 	private publishState(): void {
 		void this.state().then(state => this.notify({ kind: 'state', state })).catch(() => undefined);
+	}
+
+	/** Makes files written by pre-indexing Bot/group sessions visible after upgrading. */
+	private async backfillWrittenArtifacts(): Promise<void> {
+		const turns = await this.database.all<{ session_id: string; bot_id: string; text: string }>(`SELECT turns.session_id, sessions.bot_id, turns.text
+			FROM turns JOIN sessions ON sessions.id = turns.session_id
+			WHERE turns.role = 'tool' AND turns.text LIKE 'write_file(%'`);
+		let restored = 0;
+		for (const turn of turns) {
+			const name = writtenArtifactPath(turn.text);
+			const bot = this.bots.get(turn.bot_id);
+			if (!name || !bot || await this.artifacts.has(turn.session_id, turn.bot_id, name)) { continue; }
+			const root = resolve(bot.workingDirectory ?? join(this.home, 'workspaces', bot.id));
+			const target = resolve(root, name);
+			if (target !== root && !target.startsWith(root + sep)) { continue; }
+			const content = await fs.readFile(target).catch(() => undefined);
+			if (!content) { continue; }
+			await this.artifacts.add(turn.session_id, turn.bot_id, name, content, mimeTypeForPath(name), { replace: true });
+			restored++;
+		}
+		if (restored) { this.log(`Restored ${restored} historical file artifact${restored === 1 ? '' : 's'}.`); }
 	}
 
 	private notify(notification: RuntimeNotification): void {
@@ -349,8 +395,12 @@ export class RuntimeServer {
 			this.publishState();
 			return { removed };
 		});
+		this.rpc.register(RuntimeMethods.InterruptBot, params => {
+			const { requestId } = this.params(params, (value): value is { requestId: string } => isRecord(value) && typeof value.requestId === 'string', 'requestId required');
+			return this.runner.interrupt(requestId);
+		});
 		this.rpc.register(RuntimeMethods.RunBot, async params => {
-			const { botId, input } = this.params(params, (value): value is { botId: string; input: IBotInput } => isRecord(value) && typeof value.botId === 'string' && isRecord(value.input) && typeof value.input.text === 'string', 'botId and input.text required');
+			const { botId, input } = this.params(params, (value): value is { botId: string; input: IBotInput } => isRecord(value) && typeof value.botId === 'string' && isRecord(value.input) && typeof value.input.text === 'string' && (value.input.requestId === undefined || typeof value.input.requestId === 'string') && (value.input.title === undefined || typeof value.input.title === 'string') && (value.input.attachments === undefined || Array.isArray(value.input.attachments) && value.input.attachments.length <= 8 && value.input.attachments.every(isBotAttachment) && value.input.attachments.reduce((total, item) => total + item.size, 0) <= 30_000_000), 'botId and valid input required; attachments are limited to 8 files, 15 MB each and 30 MB total');
 			const bot = this.bots.get(botId);
 			if (!bot) {
 				throw new JsonRpcError(JsonRpcErrorCodes.InvalidParams, `Unknown bot ${botId}`);
@@ -400,6 +450,11 @@ export class RuntimeServer {
 		this.rpc.register(RuntimeMethods.RespondToApproval, params => {
 			const { id, decision } = this.params(params, (value): value is { id: string; decision: ApprovalDecision } => isRecord(value) && typeof value.id === 'string' && ['allow', 'deny', 'allowScope'].includes(String(value.decision)), 'id and decision required');
 			return { resolved: this.approvals.respond(id, decision) };
+		});
+		this.rpc.register(RuntimeMethods.ListQuestions, () => this.questions.list());
+		this.rpc.register(RuntimeMethods.RespondToQuestion, params => {
+			const { id, answers } = this.params(params, (value): value is { id: string; answers: Record<string, string> } => isRecord(value) && typeof value.id === 'string' && isRecord(value.answers) && Object.values(value.answers).every(answer => typeof answer === 'string'), 'id and string answers required');
+			return { resolved: this.questions.respond(id, answers) };
 		});
 		// model bindings
 		this.rpc.register(RuntimeMethods.SetModelBinding, async params => {
@@ -518,9 +573,11 @@ export class RuntimeServer {
 			await this.gatewayRegistry.deliver(gatewayId, chatId, text);
 			return { queued: true };
 		});
-		this.rpc.register(RuntimeMethods.AddArtifact, params => {
+		this.rpc.register(RuntimeMethods.AddArtifact, async params => {
 			const { sessionId, botId, name, content, contentBase64, mimeType } = this.params(params, (value): value is { sessionId?: string; botId: string; name: string; content?: string; contentBase64?: string; mimeType?: string } => isRecord(value) && typeof value.botId === 'string' && typeof value.name === 'string' && (typeof value.content === 'string' || typeof value.contentBase64 === 'string'), 'botId, name, and content required');
-			return this.artifacts.add(sessionId ?? 'workbench', botId, name, typeof contentBase64 === 'string' ? Buffer.from(contentBase64, 'base64') : content ?? '', mimeType ?? 'text/plain');
+			const artifact = await this.artifacts.add(sessionId ?? 'workbench', botId, name, typeof contentBase64 === 'string' ? Buffer.from(contentBase64, 'base64') : content ?? '', mimeType ?? 'text/plain');
+			this.publishState();
+			return artifact;
 		});
 		this.rpc.register(RuntimeMethods.CompareMemoryAdapter, async params => {
 			const { id } = this.params(params, (value): value is { id: string } => isRecord(value) && typeof value.id === 'string', 'id required');

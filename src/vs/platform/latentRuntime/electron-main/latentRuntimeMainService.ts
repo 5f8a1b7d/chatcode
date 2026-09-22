@@ -48,7 +48,7 @@ export class LatentRuntimeMainService extends Disposable implements ILatentRunti
 		@ILogService private readonly logService: ILogService,
 	) {
 		super();
-		this.state = { connected: false, backgroundEnabled: this.stateService.getItem<boolean>(backgroundKey, false), version: RUNTIME_ENTRYPOINT, gateways: [], nextJobRuns: [], pendingApprovals: 0 };
+		this.state = { connected: false, backgroundEnabled: this.stateService.getItem<boolean>(backgroundKey, false), version: RUNTIME_ENTRYPOINT, gateways: [], nextJobRuns: [], pendingApprovals: 0, pendingQuestions: 0 };
 		this._register(lifecycleMainService.onWillShutdown(event => {
 			if (!this.state.backgroundEnabled && this.client.value?.isConnected) {
 				event.join('latentRuntime', this.client.value.call(RuntimeMethods.Shutdown).then(() => undefined, () => undefined));

@@ -32,6 +32,7 @@ export interface IRuntimeState {
 	readonly gateways: readonly IGatewayHealth[];
 	readonly nextJobRuns: readonly { readonly jobId: string; readonly name: string; readonly at: number }[];
 	readonly pendingApprovals: number;
+	readonly pendingQuestions: number;
 }
 
 /** Built-in platforms are `webhook` and `telegram`; runtime plugins add more (`latent.gatewayPlatforms`). */
@@ -94,11 +95,26 @@ export interface IBotPreset {
 }
 
 export interface IBotInput {
+	/** Caller-owned id used to interrupt this run, including before its session exists. */
+	readonly requestId?: string;
 	readonly text: string;
+	/** User-selected content forwarded only to the model binding used for this run. */
+	readonly attachments?: readonly IBotAttachment[];
+	/** Stable display/registry title used only when a new session is created. */
+	readonly title?: string;
 	readonly sessionId?: string;
 	readonly gatewayId?: string;
 	readonly chatId?: string;
 	readonly sender?: string;
+}
+
+export interface IBotAttachment {
+	readonly id: string;
+	readonly name: string;
+	readonly mimeType: string;
+	/** A base64 data URL; the runtime rejects malformed and over-limit payloads. */
+	readonly dataUrl: string;
+	readonly size: number;
 }
 
 export interface IRuntimeSessionRef {
@@ -118,6 +134,7 @@ export interface IRuntimeSessionTurn {
 }
 
 export interface IRuntimeApprovalRequest {
+	readonly requestId?: string;
 	readonly id: string;
 	readonly botId: string;
 	readonly sessionId: string;
@@ -129,6 +146,15 @@ export interface IRuntimeApprovalRequest {
 }
 
 export type ApprovalDecision = 'allow' | 'deny' | 'allowScope';
+
+export interface IRuntimeQuestionRequest {
+	readonly id: string;
+	readonly requestId?: string;
+	readonly botId: string;
+	readonly sessionId: string;
+	readonly questions: readonly { readonly id: string; readonly question: string; readonly choices?: readonly string[]; readonly multiSelect?: boolean }[];
+	readonly expiresAt: number;
+}
 
 export interface IRecallOptions {
 	readonly excludeSessionId?: string;
@@ -234,6 +260,8 @@ export interface IScheduledJob {
 	readonly schedule: string;
 	readonly enabled: boolean;
 	readonly allowOverlap?: boolean;
+	/** Append this run to the Bot's stable `Bot Chat` session, creating it when needed. */
+	readonly deliverToBotChat?: boolean;
 	readonly deliverTo?: { readonly gatewayId: string; readonly chatId: string };
 	readonly lastRunAt?: number;
 	readonly nextRunAt?: number;
@@ -256,6 +284,8 @@ export type RuntimeNotification =
 	| { readonly kind: 'state'; readonly state: IRuntimeState }
 	| { readonly kind: 'approvalRequested'; readonly request: IRuntimeApprovalRequest }
 	| { readonly kind: 'approvalResolved'; readonly id: string; readonly decision: ApprovalDecision | 'timeout' }
+	| { readonly kind: 'questionRequested'; readonly request: IRuntimeQuestionRequest }
+	| { readonly kind: 'questionResolved'; readonly id: string }
 	| { readonly kind: 'sessionUpdated'; readonly session: IRuntimeSessionRef }
 	| { readonly kind: 'gatewayMessage'; readonly gatewayId: string; readonly chatId: string; readonly sender: string; readonly text: string };
 
@@ -272,6 +302,7 @@ export const RuntimeMethods = {
 	UpsertBot: 'bots.upsert',
 	RemoveBot: 'bots.remove',
 	RunBot: 'bots.run',
+	InterruptBot: 'bots.interrupt',
 	RegisterBotPresets: 'bots.presets.register',
 	ListBotPresets: 'bots.presets.list',
 	RestoreBotPresets: 'bots.presets.restore',
@@ -280,6 +311,8 @@ export const RuntimeMethods = {
 	GetSessionTurns: 'sessions.turns',
 	ListApprovals: 'approvals.list',
 	RespondToApproval: 'approvals.respond',
+	ListQuestions: 'questions.list',
+	RespondToQuestion: 'questions.respond',
 	SetModelBinding: 'models.setBinding',
 	ListModelBindings: 'models.listBindings',
 	Recall: 'memory.recall',
