@@ -8,7 +8,7 @@ import { ITextModelContentProvider, ITextModelService } from '../../../../../edi
 import { localize } from '../../../../../nls.js';
 import { INotificationService } from '../../../../../platform/notification/common/notification.js';
 import { IQuickInputService, IQuickPickItem } from '../../../../../platform/quickinput/common/quickInput.js';
-import { IMemoryAdapterState } from '../../../../../platform/latentRuntime/common/runtimeProtocol.js';
+import { IMemoryAdapterState, IMemorySnapshot, IMemoryWriteResult } from '../../../../../platform/latentRuntime/common/runtimeProtocol.js';
 import { IMemoryComparisonEntry, MemoryComparisonDecision } from '../../../../../platform/latentRuntime/common/runtimePlugin.js';
 import { IWorkbenchContribution } from '../../../../common/contributions.js';
 import { IEditorService } from '../../../../services/editor/common/editorService.js';
@@ -43,6 +43,27 @@ interface IMemoryReviewServices {
 
 interface IDecisionItem extends IQuickPickItem {
 	readonly decision: MemoryComparisonDecision | 'later' | 'stop';
+}
+
+/** Explicitly select the owning Bot before opening files or reviewing a staged mutation. */
+export async function reviewBotMemory({ runtime, quickInput, editorService, notificationService }: IMemoryReviewServices, botId?: string): Promise<void> {
+	const bots = await runtime.listBots();
+	const bot = bots.find(bot => bot.id === botId) ?? (await quickInput.pick(bots.map(bot => ({ label: bot.name, bot })), { placeHolder: localize('latent.memoryReview.bot', "Choose a Bot's local memory profile") }))?.bot;
+	if (!bot) { return; }
+	const snapshot = await runtime.profileMemory({ botId: bot.id, action: 'snapshot' }) as IMemorySnapshot & { profileHome: string };
+	const items = [
+		...['memories/MEMORY.md', 'memories/USER.md', 'SOUL.md', 'config.yaml'].map(file => ({ label: file, file, pendingId: undefined as string | undefined })),
+		...snapshot.staged.map(pending => ({ label: localize('latent.memoryReview.pending', "Review: {0}", pending.summary), file: undefined as string | undefined, pendingId: pending.id })),
+	];
+	const picked = await quickInput.pick(items, { title: bot.name, placeHolder: localize('latent.memoryReview.localFiles', "Changes to SOUL and memory enter existing chats after successful compression") });
+	if (picked?.file) { await editorService.openEditor({ resource: URI.joinPath(URI.file(snapshot.profileHome), picked.file) }); }
+	else if (picked?.pendingId) {
+		const decision = await quickInput.pick([{ label: localize('latent.memoryReview.apply', "Apply Change"), accept: true }, { label: localize('latent.memoryReview.discard', "Discard Change"), accept: false }], { title: picked.label });
+		if (decision) {
+			const result = await runtime.profileMemory({ botId: bot.id, action: 'confirm', id: picked.pendingId, accept: decision.accept }) as IMemoryWriteResult;
+			if (decision.accept && !result.applied) { notificationService.warn(result.message ?? localize('latent.memoryReview.notApplied', "Memory changed before approval; read it again and retry.")); }
+		}
+	}
 }
 
 /**

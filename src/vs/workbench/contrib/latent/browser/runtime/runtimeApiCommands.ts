@@ -1,8 +1,9 @@
 /* eslint-disable header/header */
+import { IHarnessContextInput } from '../../../../../platform/latentRuntime/common/runtimeProtocol.js';
 import { CommandsRegistry } from '../../../../../platform/commands/common/commands.js';
 import { IConfigurationService } from '../../../../../platform/configuration/common/configuration.js';
 import { ServicesAccessor } from '../../../../../platform/instantiation/common/instantiation.js';
-import { ApprovalDecision, IBotConfig, IBotInput, ICapabilitySource, IGatewayConfig, IMemoryWriteOp, IModelBinding, IRecallOptions, IScheduledJob } from '../../../../../platform/latentRuntime/common/runtimeProtocol.js';
+import { ApprovalDecision, IConversationMessage, IPrepareConversation, IBotConfig, IBotInput, ICapabilitySource, IGatewayConfig, IMemoryWriteOp, IModelBinding, IRecallOptions, IScheduledJob } from '../../../../../platform/latentRuntime/common/runtimeProtocol.js';
 import { IMemoryComparisonEntry, IRuntimePluginRecord, MemoryComparisonDecision } from '../../../../../platform/latentRuntime/common/runtimePlugin.js';
 import { LatentSettings } from '../latentConfiguration.js';
 import { IManagedRuntimeService } from './managedRuntimeService.js';
@@ -17,6 +18,7 @@ import { IManagedRuntimeService } from './managedRuntimeService.js';
 type RuntimeApiHandler = (runtime: IManagedRuntimeService, ...args: never[]) => Promise<unknown>;
 
 const handlers: Record<string, RuntimeApiHandler> = {
+	harnessContext: (runtime, input: IHarnessContextInput) => runtime.harnessContext(input),
 	listBots: runtime => runtime.listBots(),
 	upsertBot: (runtime, config: IBotConfig) => runtime.upsertBot(config),
 	removeBot: (runtime, id: string) => runtime.removeBot(id),
@@ -46,6 +48,9 @@ const handlers: Record<string, RuntimeApiHandler> = {
 	memoryPrompt: (runtime, sessionId: string) => runtime.memoryPrompt(sessionId),
 	sessionSearch: (runtime, options: { query?: string; sessionId?: string; from?: number; to?: number }) => runtime.sessionSearch(options),
 	memorySnapshot: runtime => runtime.memorySnapshot(),
+	prepareConversation: (runtime, input: IPrepareConversation) => runtime.prepareConversation(input),
+	commitConversation: (runtime, input: { sessionId: string; requestId: string; messages: IConversationMessage[]; text: string; offset?: number }) => runtime.commitConversation(input),
+	profileMemory: (runtime, input: { botId: string; action: 'snapshot' | 'write' | 'confirm' | 'clone'; sourceId?: string; op?: IMemoryWriteOp; id?: string; accept?: boolean }) => runtime.profileMemory(input),
 	memoryWrite: (runtime, op: IMemoryWriteOp) => runtime.memoryWrite(op),
 	memoryConfirm: (runtime, id: string, accept: boolean) => runtime.memoryConfirm(id, accept),
 	listMemoryAdapters: runtime => runtime.listMemoryAdapters(),

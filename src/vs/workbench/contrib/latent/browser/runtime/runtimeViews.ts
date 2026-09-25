@@ -282,6 +282,8 @@ class RuntimeView extends ViewPane {
 					], 'book');
 				}
 				const memorySection = this.section(this.contentBody, localize('runtime.memory', "Memory"));
+				this.empty(memorySection, localize('runtime.defaultMemory', "These files belong to the default profile. Each Bot has its own memory profile."));
+				this.button(memorySection, command(localize('runtime.botMemory', "Open Bot Memory Profile…"), 'latent.memory.reviewBot'), true);
 				this.empty(memorySection, state.funes?.available ? `${state.funes.version} · ${state.funes.lastError ?? (state.funes.indexedAt ? localize('runtime.indexed', "History Indexed") : localize('runtime.indexing', "Indexing History…"))}` : localize('runtime.funesMissing', "Funes is unavailable on this host; local keyword history search is active."));
 				for (const target of ['memory', 'user'] as const) {
 					const filename = target === 'memory' ? 'MEMORY.md' : 'USER.md';

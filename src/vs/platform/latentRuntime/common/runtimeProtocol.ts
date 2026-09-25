@@ -64,12 +64,55 @@ export interface IToolAuthorizationScope {
 }
 
 export interface IModelBinding {
+	readonly contextLength?: number;
+	readonly maxOutputTokens?: number;
 	readonly providerId: string;
 	readonly modelId: string;
 	readonly protocol: string;
 	readonly baseUrl: string;
 	/** Present only when the binding is stored; the runtime keeps it in its encrypted secret file. */
 	readonly apiKey?: string;
+}
+
+/** Data/tool bridge for an external harness. Never calls a model or replaces its working context. */
+export interface IHarnessContextInput {
+	action: 'create' | 'snapshot' | 'record' | 'tool' | 'poll' | 'finish';
+	requestId?: string;
+	error?: string;
+	title?: string;
+	botId?: string;
+	sessionId?: string;
+	role?: 'user' | 'assistant' | 'tool';
+	text?: string;
+	tool?: string;
+	args?: Record<string, unknown>;
+}
+
+/** Text-only transport for extension-host conversations; the runtime owns their durable context. */
+export interface IConversationMessage {
+	role: 'system' | 'user' | 'assistant' | 'tool';
+	content: string;
+	tool_call_id?: string;
+	tool_calls?: { id: string; type: 'function'; function: { name: string; arguments: string } }[];
+}
+export interface IPrepareConversation {
+	compressionArgs?: string;
+	continuation?: IConversationMessage[];
+	offset?: number;
+	sessionId: string;
+	requestId: string;
+	modelBindingId: string;
+	history: { role: 'user' | 'assistant'; text: string }[];
+	text: string;
+	prompt: string;
+	force?: boolean;
+}
+export interface IPreparedConversation {
+	report?: string;
+	memoryReviewInterval?: number;
+	offset: number;
+	messages: IConversationMessage[];
+	compacted: boolean;
 }
 
 export interface IBotConfig {
@@ -321,6 +364,9 @@ export const RuntimeMethods = {
 	MemoryConfirm: 'memory.confirmStaged',
 	MemorySnapshot: 'memory.snapshot',
 	MemoryPrompt: 'memory.prompt',
+	ProfileMemory: 'memory.profile',
+	PrepareConversation: 'context.prepare',
+	CommitConversation: 'context.commit',
 	MemoryReview: 'memory.review',
 	MemoryCheckpoint: 'memory.checkpoint',
 	SessionSearch: 'memory.sessionSearch',
