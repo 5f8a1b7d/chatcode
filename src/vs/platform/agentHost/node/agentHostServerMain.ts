@@ -7,6 +7,7 @@
 // Start with: node out/vs/platform/agentHost/node/agentHostServerMain.js [--port <port>] [--host <host>] [--connection-token <token>] [--connection-token-file <path>] [--without-connection-token] [--enable-mock-agent] [--claude-sdk-root <path>] [--codex-sdk-root <path>] [--quiet] [--log <level>]
 
 import { fileURLToPath } from 'url';
+import { isAgentHostProviderAllowed } from './agentHostProviderPolicy.js';
 
 // This standalone process isn't bootstrapped via bootstrap-esm.ts, so we must
 // set _VSCODE_FILE_ROOT ourselves so that FileAccess can resolve module paths.
@@ -199,7 +200,7 @@ async function main(): Promise<void> {
 		disableTelemetry: options.quiet,
 		transientProxyConfiguration: false,
 		hostLaunchKind: AgentHostLaunchKind.VSCodeCLI,
-		providerConfigurations: [createCodexProviderConfiguration(environmentService.userHome, process.env[AgentHostCodexAgentCodexHomeEnvVar])],
+		providerConfigurations: [createCodexProviderConfiguration(environmentService.userHome, process.env.VSCODE_AGENT_HOST_CODEX_HOME ?? process.env[AgentHostCodexAgentCodexHomeEnvVar])],
 		byok: { kind: 'unavailable' },
 	});
 	disposables.add(runtime);
@@ -231,8 +232,10 @@ async function main(): Promise<void> {
 	let sdkDownloadProgress: Event<IAgentSdkDownloadProgress> | undefined;
 	if (!options.quiet) {
 		sdkDownloadProgress = runtime.sdkDownloadProgress;
-		providerService.registerProvider(instantiationService.createInstance(CopilotAgent));
-		log('CopilotAgent registered');
+		if (isAgentHostProviderAllowed('copilotcli')) {
+			providerService.registerProvider(instantiationService.createInstance(CopilotAgent));
+			log('CopilotAgent registered');
+		}
 		// Claude and Codex providers are gated on two things:
 		//  1. The user-facing enable toggle (`chat.agentHost.<x>Agent.enabled`,
 		//     forwarded as an env var by the renderer-side starters; the remote
@@ -246,11 +249,11 @@ async function main(): Promise<void> {
 		//     devDependency, so `CodexAgent._resolveSdkRoot` resolves it from
 		//     `node_modules` in dev; built/shipped installs use the env-var
 		//     override or `product.agentSdks.codex`.
-		if (isAgentEnabled(process.env[AgentHostClaudeAgentEnabledEnvVar], true) && (!environmentService.isBuilt || agentSdkDownloader.isAvailable(ClaudeSdkPackage))) {
+		if (isAgentHostProviderAllowed('claude') && isAgentEnabled(process.env[AgentHostClaudeAgentEnabledEnvVar], true) && (!environmentService.isBuilt || agentSdkDownloader.isAvailable(ClaudeSdkPackage))) {
 			providerService.registerProvider(instantiationService.createInstance(ClaudeAgent));
 			log('ClaudeAgent registered');
 		}
-		if (!environmentService.isBuilt || agentSdkDownloader.isAvailable(CodexSdkPackage)) {
+		if (isAgentHostProviderAllowed('codex') && (!environmentService.isBuilt || agentSdkDownloader.isAvailable(CodexSdkPackage))) {
 			let codexRegistered = false;
 			const registerCodexIfEnabled = () => {
 				if (codexRegistered) {

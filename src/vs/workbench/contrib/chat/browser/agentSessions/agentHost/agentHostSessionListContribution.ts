@@ -10,12 +10,14 @@ import { IAgentHostEnablementService } from '../../../../../../platform/agentHos
 import { type AgentInfo, type RootState } from '../../../../../../platform/agentHost/common/state/sessionState.js';
 import { IConfigurationService } from '../../../../../../platform/configuration/common/configuration.js';
 import { IInstantiationService } from '../../../../../../platform/instantiation/common/instantiation.js';
+import { IProductService } from '../../../../../../platform/product/common/productService.js';
 import { IWorkbenchContribution } from '../../../../../common/contributions.js';
 import { IWorkbenchEnvironmentService } from '../../../../../services/environment/common/environmentService.js';
 import { IChatSessionsService } from '../../../common/chatSessionsService.js';
 import { IAgentHostSessionWorkingDirectoryResolver } from './agentHostSessionWorkingDirectoryResolver.js';
 import { AgentHostSessionListController } from './agentHostSessionListController.js';
 import { AgentHostSessionListStore } from './agentHostSessionListStore.js';
+import { isLatentCopilotEnabled } from '../../../../latent/browser/latentProduct.js';
 
 export class AgentHostSessionListContribution extends Disposable implements IWorkbenchContribution {
 
@@ -35,6 +37,7 @@ export class AgentHostSessionListContribution extends Disposable implements IWor
 		@IWorkbenchEnvironmentService environmentService: IWorkbenchEnvironmentService,
 		@IAgentHostSessionWorkingDirectoryResolver private readonly _workingDirectoryResolver: IAgentHostSessionWorkingDirectoryResolver,
 		@IAgentHostEnablementService private readonly _agentHostEnablementService: IAgentHostEnablementService,
+		@IProductService private readonly _productService: IProductService,
 	) {
 		super();
 
@@ -90,7 +93,8 @@ export class AgentHostSessionListContribution extends Disposable implements IWor
 	}
 
 	private _shouldRegisterAgent(provider: AgentProvider): boolean {
-		return shouldSurfaceLocalAgentHostProvider(provider, this._configurationService, this._isSessionsWindow);
+		return (provider !== 'copilotcli' || isLatentCopilotEnabled(this._productService))
+			&& shouldSurfaceLocalAgentHostProvider(provider, this._configurationService, this._isSessionsWindow);
 	}
 
 	private _handleRootStateChange(rootState: RootState, sessionListStore: AgentHostSessionListStore): void {

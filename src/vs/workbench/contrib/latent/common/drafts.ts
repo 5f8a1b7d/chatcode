@@ -57,6 +57,8 @@ export interface ITabDraftService {
 	setText(tabKey: ITabKey, text: string): void;
 	/** Adds an attachment and returns its number. */
 	addAttachment(tabKey: ITabKey, entry: IChatRequestVariableEntry): number;
+	/** Replaces the payload of a numbered attachment without changing its number or lifetime. */
+	updateAttachment(tabKey: ITabKey, number: number, entry: IChatRequestVariableEntry): void;
 	removeAttachment(tabKey: ITabKey, number: number): void;
 	/** Restores a removed attachment under a new number and rewrites references to it; returns the new number. */
 	reAddAttachment(tabKey: ITabKey, number: number): number | undefined;

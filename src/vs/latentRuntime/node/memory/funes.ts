@@ -1,5 +1,5 @@
 /* eslint-disable header/header */
-import { execFile } from 'child_process';
+import { ChildProcess, execFile } from 'child_process';
 import { promises as fs } from 'fs';
 import { RuntimeDatabase } from '../runtimeDatabase.js';
 import { homedir } from 'os';
@@ -16,12 +16,14 @@ export class FunesMemory {
 	private timer: ReturnType<typeof setTimeout> | undefined;
 	private indexedAt: number | undefined;
 	private readonly home: string;
+	private readonly children = new Set<ChildProcess>();
+	private disposed = false;
 
-	constructor(runtimeHome: string, private readonly database: RuntimeDatabase, private readonly log: (message: string) => void, private readonly onChange: () => void = () => {}) { this.home = join(runtimeHome, '..', 'memory', 'funes'); }
+	constructor(runtimeHome: string, private readonly database: RuntimeDatabase, private readonly log: (message: string) => void, private readonly onChange: () => void = () => {}, directory?: string) { this.home = directory ?? join(runtimeHome, '..', 'memory', 'funes'); }
 
 	async initialize(): Promise<void> {
 		await fs.mkdir(this.home, { recursive: true });
-		for (const candidate of [...new Set([this.executable, join(homedir(), '.local', 'bin', process.platform === 'win32' ? 'funes.exe' : 'funes')])]) {
+		for (const candidate of process.env['LATENT_FUNES_PATH'] ? [this.executable] : [...new Set([this.executable, join(homedir(), '.local', 'bin', process.platform === 'win32' ? 'funes.exe' : 'funes')])]) {
 			try { this.executable = candidate; this.version = (await this.run(['--version'], 5000)).trim(); this.lastError = undefined; return; }
 			catch (error) { this.lastError = error instanceof Error ? error.message : String(error); }
 		}
@@ -31,12 +33,19 @@ export class FunesMemory {
 	state(): IFunesState { return { available: !!this.version, version: this.version, indexedAt: this.indexedAt, lastError: this.lastError }; }
 
 	private run(args: string[], timeout = 60_000): Promise<string> {
-		return new Promise((resolve, reject) => execFile(this.executable, args, { env: { ...process.env, FUNES_HOME: this.home }, timeout, maxBuffer: 2 * 1024 * 1024, windowsHide: true }, (error, stdout, stderr) => error ? reject(new Error(`${error.message}\n${stderr.slice(-1500)}`)) : resolve(stdout)));
+		if (this.disposed) { return Promise.reject(new Error('Funes profile is closed.')); }
+		return new Promise((resolve, reject) => {
+			const child = execFile(this.executable, args, { env: { ...process.env, FUNES_HOME: this.home }, timeout, maxBuffer: 2 * 1024 * 1024, windowsHide: true }, (error, stdout, stderr) => {
+				this.children.delete(child);
+				if (error) { reject(new Error(`${error.message}\n${stderr.slice(-1500)}`)); } else { resolve(stdout); }
+			});
+			this.children.add(child);
+		});
 	}
 
 	/** Index after turns settle, coalescing arrivals while an index pass is running. No remote publishing. */
 	schedule(): void {
-		if (!this.version) { return; }
+		if (!this.version || this.disposed) { return; }
 		this.dirty = true;
 		if (this.timer) { clearTimeout(this.timer); }
 		this.timer = setTimeout(() => { this.timer = undefined; void this.flush(); }, 2000);
@@ -80,5 +89,10 @@ export class FunesMemory {
 		catch { return undefined; }
 	}
 
-	dispose(): void { if (this.timer) { clearTimeout(this.timer); } }
+	async dispose(): Promise<void> {
+		this.disposed = true;
+		if (this.timer) { clearTimeout(this.timer); this.timer = undefined; }
+		for (const child of this.children) { child.kill(); }
+		await this.pending;
+	}
 }

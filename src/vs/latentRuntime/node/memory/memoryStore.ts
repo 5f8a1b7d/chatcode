@@ -6,7 +6,7 @@ import { IMemorySnapshot, IMemoryWriteOp, IMemoryWriteResult } from '../../../pl
 import { memoryThreat } from './memorySafety.js';
 
 const delimiter = '\n§\n';
-const limits = { memory: 2200, user: 1375 };
+export interface IMemoryOptions { memory_enabled?: boolean; user_profile_enabled?: boolean; write_approval?: boolean; memory_char_limit?: number; user_char_limit?: number; nudge_interval?: number }
 interface PendingChange { readonly id: string; readonly summary: string; readonly op: IMemoryWriteOp }
 
 /** Port of Hermes' bounded entry store: atomic writes, unique matching, deduplication and frozen prompt snapshots. */
@@ -14,8 +14,14 @@ export class MemoryStore {
 	private readonly root: string;
 	private queue: Promise<unknown> = Promise.resolve();
 
-	constructor(home: string) { this.root = join(home, '..', 'memory'); }
+	constructor(home: string, directory?: string, private readonly readOptions?: () => Promise<IMemoryOptions>) { this.root = directory ?? join(home, '..', 'memory'); }
 	get directory(): string { return this.root; }
+	async options(): Promise<Required<IMemoryOptions>> {
+		const options = { memory_enabled: true, user_profile_enabled: true, write_approval: false, memory_char_limit: 2200, user_char_limit: 1375, nudge_interval: 10, ...this.readOptions ? await this.readOptions() : { write_approval: true } };
+		for (const key of ['memory_char_limit', 'user_char_limit', 'nudge_interval'] as const) { if (!Number.isInteger(options[key]) || options[key] < (key === 'nudge_interval' ? 0 : 1)) { throw new Error(`Invalid memory.${key}.`); } }
+		for (const key of ['memory_enabled', 'user_profile_enabled', 'write_approval'] as const) { if (typeof options[key] !== 'boolean') { throw new Error(`Invalid memory.${key}.`); } }
+		return options;
+	}
 
 	async initialize(): Promise<void> {
 		await fs.mkdir(join(this.root, 'entries'), { recursive: true });
@@ -86,6 +92,9 @@ export class MemoryStore {
 
 	private async apply(op: IMemoryWriteOp, confirmed: boolean): Promise<IMemoryWriteResult> {
 		if (op.target !== 'memory' && op.target !== 'user') { return { applied: false, message: 'Invalid memory target.' }; }
+		const settings = await this.options();
+		if (!settings.memory_enabled || op.target === 'user' && !settings.user_profile_enabled) { return { applied: false, message: 'This memory store is disabled in profile config.yaml.' }; }
+		const limits = { memory: settings.memory_char_limit, user: settings.user_char_limit };
 		const raw = await this.read(op.target);
 		const original = this.entries(raw);
 		const entries = [...new Set(original)];
@@ -115,7 +124,7 @@ export class MemoryStore {
 			return { applied: false, message: `Memory would use ${content.length}/${limits[op.target]} characters. Consolidate existing entries before adding more.` };
 		}
 		if (content === original.join(delimiter)) { return { applied: true, message: 'Entry already exists. No duplicate added.' }; }
-		if (operations.some(operation => operation.action !== 'add') && !confirmed) {
+		if (settings.write_approval && (this.readOptions !== undefined || operations.some(operation => operation.action !== 'add')) && !confirmed) {
 			const pending = await this.pending();
 			const change = { id: randomUUID(), summary: `${op.target}: ${operations.map(operation => `${operation.action} ${(operation.oldText ?? operation.content ?? '').slice(0, 80)}`).join('; ')}`, op };
 			await this.atomicWrite(join(this.root, 'pending.json'), JSON.stringify([...pending, change]));
@@ -141,7 +150,11 @@ export class MemoryStore {
 
 	/** Call once per session and persist the result; writes during a conversation do not change its prefix. */
 	async prompt(): Promise<string> {
+		const settings = await this.options();
+		if (!settings.memory_enabled) { return ''; }
+		const limits = { memory: settings.memory_char_limit, user: settings.user_char_limit };
 		const blocks = await Promise.all((['memory', 'user'] as const).map(async target => {
+			if (target === 'user' && !settings.user_profile_enabled) { return ''; }
 			const entries = this.entries(await this.read(target));
 			if (!entries.length) { return ''; }
 			const safe = entries.map(entry => memoryThreat(entry) ? '[BLOCKED: unsafe memory entry; review the original memory file.]' : entry).join(delimiter);

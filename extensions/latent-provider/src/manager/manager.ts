@@ -129,6 +129,12 @@ export class ProviderManager implements vscode.Disposable {
 	}
 
 	isEnabled(): boolean {
+		// A derivative-controlled provider surface is not user-disableable. In this
+		// mode listActiveBindings() already excludes every locally configured
+		// provider, leaving only extension-registered organization providers.
+		if (this.configurationHidden) {
+			return true;
+		}
 		const configuration = vscode.workspace.getConfiguration();
 		const inspected = configuration.inspect<boolean>(ProviderEnabledSetting);
 		if (inspected?.globalValue !== undefined || inspected?.workspaceValue !== undefined) {

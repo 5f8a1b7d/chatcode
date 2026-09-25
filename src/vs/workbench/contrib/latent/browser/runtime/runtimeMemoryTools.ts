@@ -32,7 +32,7 @@ export class RuntimeMemoryTools extends Disposable implements IWorkbenchContribu
 		this._register(tools.registerTool({
 			id: 'latent_memory', toolReferenceName: 'persistent_memory', source: ToolDataSource.Internal,
 			displayName: localize('runtime.memoryTool', "Persistent Memory"),
-			modelDescription: 'Manage shared MEMORY.md and USER.md used at conversation start. Save durable facts and preferences proactively. action=read returns current entries. Add, replace or remove whole entries, with unique oldText for edits. Destructive operations are staged for review in Capabilities > Memory. Never save credentials or transient task state.',
+			modelDescription: 'Manage default-profile MEMORY.md and USER.md used at conversation start. Bots have separate memory profiles. Save durable facts and preferences proactively. action=read returns current entries. Add, replace or remove whole entries, with unique oldText for edits. Destructive operations are staged for review in Capabilities > Memory. Never save credentials or transient task state.',
 			when: ContextKeyExpr.equals('config.latent.runtime.enabled', true),
 			alwaysDisplayInputOutput: true,
 			inputSchema: { type: 'object', properties: { action: { type: 'string', enum: ['read', 'add', 'replace', 'remove'] }, target: { type: 'string', enum: ['memory', 'user'] }, content: { type: 'string' }, oldText: { type: 'string' } }, required: ['action'] },

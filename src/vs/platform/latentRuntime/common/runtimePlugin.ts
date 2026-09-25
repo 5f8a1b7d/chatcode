@@ -60,6 +60,7 @@ export interface IRuntimeToolContext {
 	readonly recall: (query: string) => Promise<string>;
 	readonly memoryWrite: (target: 'memory' | 'user', content: string) => Promise<string>;
 	readonly memoryManage?: (op: IMemoryWriteOp) => Promise<string>;
+	readonly memoryRead?: () => Promise<string>;
 	readonly sessionSearch?: (options: { query?: string; sessionId?: string; from?: number; to?: number }) => Promise<string>;
 	/**
 	 * Persists output produced by this tool and adds it to the shared Artifacts index.

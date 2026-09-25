@@ -1,10 +1,11 @@
 /* eslint-disable header/header */
+import { IHarnessContextInput } from '../../../../../platform/latentRuntime/common/runtimeProtocol.js';
 import { Emitter, Event } from '../../../../../base/common/event.js';
 import { Disposable } from '../../../../../base/common/lifecycle.js';
 import { createDecorator } from '../../../../../platform/instantiation/common/instantiation.js';
 import { ILatentRuntimeService } from '../../../../../platform/latentRuntime/common/latentRuntime.js';
 import { IMemoryComparisonEntry, IRuntimePluginRecord, IRuntimePluginState, MemoryComparisonDecision } from '../../../../../platform/latentRuntime/common/runtimePlugin.js';
-import { ApprovalDecision, IArtifact, IBotConfig, IBotInput, IBotPreset, ICapabilitySource, IGatewayConfig, IIndexedTurn, IJobExecution, IMemoryAdapterState, IMemorySnapshot, IMemoryWriteOp, IMemoryWriteResult, IModelBinding, IPairingCode, IRecallHit, IRecallOptions, IRuntimeApprovalRequest, IRuntimeCapability, IRuntimeQuestionRequest, IRuntimeSessionRef, IRuntimeSessionTurn, IRuntimeState, IScheduledJob, RuntimeMethods, RuntimeNotification } from '../../../../../platform/latentRuntime/common/runtimeProtocol.js';
+import { ApprovalDecision, IConversationMessage, IPrepareConversation, IPreparedConversation, IArtifact, IBotConfig, IBotInput, IBotPreset, ICapabilitySource, IGatewayConfig, IIndexedTurn, IJobExecution, IMemoryAdapterState, IMemorySnapshot, IMemoryWriteOp, IMemoryWriteResult, IModelBinding, IPairingCode, IRecallHit, IRecallOptions, IRuntimeApprovalRequest, IRuntimeCapability, IRuntimeQuestionRequest, IRuntimeSessionRef, IRuntimeSessionTurn, IRuntimeState, IScheduledJob, RuntimeMethods, RuntimeNotification } from '../../../../../platform/latentRuntime/common/runtimeProtocol.js';
 
 export const IManagedRuntimeService = createDecorator<IManagedRuntimeService>('latentManagedRuntimeService');
 
@@ -33,6 +34,7 @@ export interface IManagedRuntimeService {
 	/** Resets the matching Bots to their presets. Returns the ids restored. */
 	restoreBotPresets(filter?: { owner?: string; botIds?: readonly string[] }): Promise<readonly string[]>;
 	createSession(botId: string): Promise<IRuntimeSessionRef>;
+	harnessContext(input: IHarnessContextInput): Promise<unknown>;
 	listSessions(): Promise<readonly IRuntimeSessionRef[]>;
 	getSessionTurns(sessionId: string): Promise<readonly IRuntimeSessionTurn[]>;
 	listApprovals(): Promise<readonly IRuntimeApprovalRequest[]>;
@@ -50,6 +52,9 @@ export interface IManagedRuntimeService {
 	memoryCheckpoint(sessionId: string, messages: { role: 'user' | 'assistant' | 'tool'; text: string }[]): Promise<unknown>;
 	sessionSearch(options: { query?: string; sessionId?: string; from?: number; to?: number; excludeSessionId?: string }): Promise<string>;
 	memorySnapshot(): Promise<IMemorySnapshot>;
+	prepareConversation(input: IPrepareConversation): Promise<IPreparedConversation>;
+	commitConversation(input: { sessionId: string; requestId: string; messages: IConversationMessage[]; text: string; offset?: number }): Promise<void>;
+	profileMemory(input: { botId: string; action: 'snapshot' | 'write' | 'confirm' | 'clone'; sourceId?: string; op?: IMemoryWriteOp; id?: string; accept?: boolean }): Promise<unknown>;
 	listMemoryAdapters(): Promise<readonly IMemoryAdapterState[]>;
 	setMemoryAdapterEnabled(id: string, enabled: boolean, secret?: string, baseUrl?: string): Promise<void>;
 	removeCapability(id: string): Promise<void>;
@@ -122,6 +127,7 @@ export class ManagedRuntimeService extends Disposable implements IManagedRuntime
 	async setModelBinding(id: string, binding: IModelBinding): Promise<void> { await this.runtime.call(RuntimeMethods.SetModelBinding, { id, binding }); }
 	listModelBindings(): Promise<readonly { id: string; providerId?: string; modelId?: string; protocol?: string }[]> { return this.runtime.call(RuntimeMethods.ListModelBindings); }
 	recall(query: string, options?: IRecallOptions): Promise<readonly IRecallHit[]> { return this.runtime.call(RuntimeMethods.Recall, { query, options }); }
+	harnessContext(input: IHarnessContextInput): Promise<unknown> { return this.runtime.call('harness.context', input); }
 	async indexTurns(turns: readonly IIndexedTurn[]): Promise<number> { return (await this.runtime.call<{ indexed: number }>(RuntimeMethods.IndexTurns, { turns })).indexed; }
 	memoryWrite(op: IMemoryWriteOp): Promise<IMemoryWriteResult> { return this.runtime.call(RuntimeMethods.MemoryWrite, op); }
 	memoryConfirm(id: string, accept: boolean): Promise<IMemoryWriteResult> { return this.runtime.call(RuntimeMethods.MemoryConfirm, { id, accept }); }
@@ -130,6 +136,9 @@ export class ManagedRuntimeService extends Disposable implements IManagedRuntime
 	memoryCheckpoint(sessionId: string, messages: { role: 'user' | 'assistant' | 'tool'; text: string }[]): Promise<unknown> { return this.runtime.call(RuntimeMethods.MemoryCheckpoint, { sessionId, messages }); }
 	sessionSearch(options: { query?: string; sessionId?: string; from?: number; to?: number; excludeSessionId?: string }): Promise<string> { return this.runtime.call(RuntimeMethods.SessionSearch, options); }
 	memorySnapshot(): Promise<IMemorySnapshot> { return this.runtime.call(RuntimeMethods.MemorySnapshot); }
+	prepareConversation(input: IPrepareConversation): Promise<IPreparedConversation> { return this.runtime.call(RuntimeMethods.PrepareConversation, input); }
+	commitConversation(input: { sessionId: string; requestId: string; messages: IConversationMessage[]; text: string; offset?: number }): Promise<void> { return this.runtime.call(RuntimeMethods.CommitConversation, input); }
+	profileMemory(input: { botId: string; action: 'snapshot' | 'write' | 'confirm' | 'clone'; sourceId?: string; op?: IMemoryWriteOp; id?: string; accept?: boolean }): Promise<unknown> { return this.runtime.call(RuntimeMethods.ProfileMemory, input); }
 	listMemoryAdapters(): Promise<readonly IMemoryAdapterState[]> { return this.runtime.call(RuntimeMethods.ListMemoryAdapters); }
 	async setMemoryAdapterEnabled(id: string, enabled: boolean, secret?: string, baseUrl?: string): Promise<void> { await this.runtime.call(RuntimeMethods.SetMemoryAdapterEnabled, { id, enabled, secret, baseUrl }); }
 	listCapabilities(): Promise<readonly IRuntimeCapability[]> { return this.runtime.call(RuntimeMethods.ListCapabilities); }

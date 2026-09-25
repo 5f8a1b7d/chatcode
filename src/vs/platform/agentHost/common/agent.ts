@@ -302,6 +302,8 @@ export interface IAgentDescriptor {
  * Analogous to sending `Authorization: Bearer <token>` (RFC 6750 section 2.1).
  */
 export interface AuthenticateParams {
+	/** Optional host-managed Codex catalog. Credentials remain in the token channel, never config files. */
+	readonly codexProvider?: { readonly baseUrl: string; readonly models: readonly { readonly id: string; readonly name: string; readonly contextWindow?: number; readonly supportsVision?: boolean }[] };
 	/**
 	 * The `resource` identifier from the server's
 	 * {@link IAuthorizationProtectedResourceMetadata} that this token targets.

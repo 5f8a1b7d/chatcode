@@ -8,23 +8,45 @@ import type { IAgentHostNativeOTelConfig } from '../../common/otel/agentHostOTel
 import type { ThreadResumeParams } from './protocol/generated/v2/ThreadResumeParams.js';
 import type { JsonValue } from './protocol/generated/serde_json/JsonValue.js';
 import type { SandboxMode } from './protocol/generated/v2/SandboxMode.js';
+import { dirname, isAbsolute, join } from 'path';
 
 const CODEX_VSCODE_WORKSPACE_PERMISSION_PROFILE = 'vscode-workspace';
 const CODEX_VSCODE_WORKSPACE_NETWORK_PERMISSION_PROFILE = 'vscode-workspace-network';
 const CODEX_VSCODE_WORKSPACE_READ_ONLY_PERMISSION_PROFILE = 'vscode-workspace-read-only';
 
+function codexWorkspaceFileSystem(platform: NodeJS.Platform): Record<string, string> {
+	return { ':root': 'deny', ':minimal': 'read', ':tmpdir': 'write', ':slash_tmp': platform === 'linux' ? 'read' : 'deny' };
+}
+
+/** Native instruction discovery reads ancestor documents outside a nested workspace. */
+export function codexInstructionPermissionConfig(workingDirectories: readonly string[], codexHome: string, platform: NodeJS.Platform = process.platform): Record<string, JsonValue> {
+	if (platform === 'win32') { return {}; }
+	const filesystem = codexWorkspaceFileSystem(platform);
+	const directories = new Set([codexHome]);
+	for (const cwd of workingDirectories) {
+		if (!isAbsolute(cwd)) { throw new Error('Codex working directories must be absolute.'); }
+		let directory = cwd;
+		while (true) {
+			directories.add(directory);
+			const parent = dirname(directory);
+			if (parent === directory) { break; }
+			directory = parent;
+		}
+	}
+	for (const directory of directories) {
+		for (const name of ['AGENTS.md', 'AGENTS.override.md']) { filesystem[join(directory, name)] = 'read'; }
+	}
+	// A dotted table override replaces the table: retain every sandbox floor.
+	// Grant only the instruction filenames, never their parent directory trees.
+	return { [`permissions.${CODEX_VSCODE_WORKSPACE_PERMISSION_PROFILE}.filesystem`]: filesystem };
+}
+
 export function codexPermissionProfileOverrides(platform: NodeJS.Platform = process.platform): string[] {
 	// Codex materializes its Linux sandbox helper below /tmp before entering bwrap.
 	// Keep it executable from inside the sandbox without granting shared temp write access.
-	const slashTmpAccess = platform === 'linux' ? 'read' : 'deny';
 	const fileSystemOverride = platform === 'win32'
 		? ''
-		: `, filesystem = { ${[
-			`":root" = "deny"`,
-			`":minimal" = "read"`,
-			`":tmpdir" = "write"`,
-			`":slash_tmp" = "${slashTmpAccess}"`,
-		].join(', ')} }`;
+		: `, filesystem = { ${Object.entries(codexWorkspaceFileSystem(platform)).map(([path, access]) => `${JSON.stringify(path)} = ${JSON.stringify(access)}`).join(', ')} }`;
 	const readOnlyProfile = platform === 'win32'
 		? `permissions.${CODEX_VSCODE_WORKSPACE_READ_ONLY_PERMISSION_PROFILE}={ extends = ":read-only" }`
 		: `permissions.${CODEX_VSCODE_WORKSPACE_READ_ONLY_PERMISSION_PROFILE}={ extends = "${CODEX_VSCODE_WORKSPACE_PERMISSION_PROFILE}", filesystem = { ":workspace_roots" = { "." = "read" } } }`;

@@ -140,6 +140,7 @@ class GroupComposer extends Disposable {
 				void this.bindThread(this.threadService.getThread(event.threadId));
 			}
 		}));
+		this._register(this.chatAgentService.onDidChangeAgents(() => this.applyDefaultAgent()));
 		this._register(this.group.onDidActiveEditorChange(() => this.bindActiveEditor()));
 		this._register(this.group.onDidModelChange(() => this.updateMoveGuards()));
 		this.updateMoveGuards();

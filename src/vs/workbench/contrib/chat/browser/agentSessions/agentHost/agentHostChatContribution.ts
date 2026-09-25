@@ -22,6 +22,7 @@ import { IConfigurationService } from '../../../../../../platform/configuration/
 import { IDefaultAccountService } from '../../../../../../platform/defaultAccount/common/defaultAccount.js';
 import { IInstantiationService, ServicesAccessor } from '../../../../../../platform/instantiation/common/instantiation.js';
 import { ILogService } from '../../../../../../platform/log/common/log.js';
+import { IProductService } from '../../../../../../platform/product/common/productService.js';
 import { Registry } from '../../../../../../platform/registry/common/platform.js';
 import { IWorkbenchContribution } from '../../../../../common/contributions.js';
 import { IAgentHostFileSystemService } from '../../../../../services/agentHost/common/agentHostFileSystemService.js';
@@ -43,6 +44,7 @@ import { AgentHostPromptCacheNotification } from './agentHostPromptCacheNotifica
 import { IAgentHostActiveClientService } from './agentHostActiveClientService.js';
 import { IAgentHostProtectedResourcesService } from './agentHostProtectedResourcesService.js';
 import { AICustomizationManagementSection } from '../../../common/aiCustomizationWorkspaceService.js';
+import { isLatentCopilotEnabled } from '../../../../latent/browser/latentProduct.js';
 
 const LOCAL_AGENT_HOST_SESSION_TYPE_PREFIX = 'agent-host-';
 
@@ -64,6 +66,7 @@ async function waitForLocalAgentHostActivation(accessor: ServicesAccessor, sessi
 	const agentHostService = accessor.get(IAgentHostService);
 	const configurationService = accessor.get(IConfigurationService);
 	const environmentService = accessor.get(IWorkbenchEnvironmentService);
+	const productService = accessor.get(IProductService);
 	if (!agentHostEnablementService.enabled.get()) {
 		return false;
 	}
@@ -79,7 +82,9 @@ async function waitForLocalAgentHostActivation(accessor: ServicesAccessor, sessi
 			return false;
 		}
 		if (rootState) {
-			return rootState.agents.some(agent => agent.provider === provider && shouldSurfaceLocalAgentHostProvider(agent.provider, configurationService, environmentService.isSessionsWindow));
+			return rootState.agents.some(agent => agent.provider === provider
+				&& (agent.provider !== 'copilotcli' || isLatentCopilotEnabled(productService))
+				&& shouldSurfaceLocalAgentHostProvider(agent.provider, configurationService, environmentService.isSessionsWindow));
 		}
 
 		const changed = await Promise.race([
@@ -143,6 +148,7 @@ export class AgentHostContribution extends Disposable implements IWorkbenchContr
 		@IAgentHostActiveClientService private readonly _activeClientService: IAgentHostActiveClientService,
 		@IAgentHostProtectedResourcesService private readonly _protectedResourcesService: IAgentHostProtectedResourcesService,
 		@IAgentHostEnablementService private readonly _agentHostEnablementService: IAgentHostEnablementService,
+		@IProductService private readonly _productService: IProductService,
 	) {
 		super();
 		this._authRecovery = this._instantiationService.createInstance(AgentHostAuthenticationRecovery);
@@ -240,7 +246,8 @@ export class AgentHostContribution extends Disposable implements IWorkbenchContr
 	}
 
 	private _shouldRegisterAgent(provider: AgentProvider): boolean {
-		return shouldSurfaceLocalAgentHostProvider(provider, this._configurationService, this._isSessionsWindow);
+		return (provider !== 'copilotcli' || isLatentCopilotEnabled(this._productService))
+			&& shouldSurfaceLocalAgentHostProvider(provider, this._configurationService, this._isSessionsWindow);
 	}
 
 	private _handleRootStateChange(rootState: RootState): void {

@@ -28,7 +28,7 @@ import { sessionsSearchSources } from '../../common/sessionsSearch.js';
 import { LatentSettings } from '../latentConfiguration.js';
 import { IEditorService } from '../../../../services/editor/common/editorService.js';
 import { IManagedRuntimeService } from './managedRuntimeService.js';
-import { reviewMemoryAdapter } from './memoryReview.js';
+import { reviewBotMemory, reviewMemoryAdapter } from './memoryReview.js';
 
 import './runtimeViews.js';
 import { MarkdownString } from '../../../../../base/common/htmlContent.js';
@@ -424,6 +424,14 @@ registerAction2(class extends Action2 {
 	async run(accessor: ServicesAccessor, adapterId?: string): Promise<void> {
 		const editorService = accessor.get(IEditorService);
 		await withRuntime(accessor, services => reviewMemoryAdapter({ ...services, editorService }, typeof adapterId === 'string' ? adapterId : undefined));
+	}
+});
+
+registerAction2(class extends Action2 {
+	constructor() { super({ id: 'latent.memory.reviewBot', title: localize2('latent.memory.reviewBot', "Open Bot Memory Profile"), category, f1: true }); }
+	async run(accessor: ServicesAccessor, botId?: string): Promise<void> {
+		const editorService = accessor.get(IEditorService);
+		await withRuntime(accessor, services => reviewBotMemory({ ...services, editorService }, typeof botId === 'string' ? botId : undefined));
 	}
 });
 

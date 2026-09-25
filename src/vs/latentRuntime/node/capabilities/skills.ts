@@ -8,8 +8,8 @@ import { ICapabilitySource, IRuntimeCapability } from '../../../platform/latentR
 export class SkillRegistry {
 	private readonly root: string;
 
-	constructor(home: string) {
-		this.root = join(home, 'capabilities');
+	constructor(home: string, directory?: string) {
+		this.root = directory ?? join(home, 'capabilities');
 	}
 
 	async list(): Promise<IRuntimeCapability[]> {

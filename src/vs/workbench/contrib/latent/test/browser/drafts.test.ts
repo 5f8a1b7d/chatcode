@@ -55,6 +55,19 @@ suite('Latent drafts', () => {
 		assert.deepStrictEqual(live, [1, 3, 4]);
 	});
 
+	test('updates an attachment payload without changing its number or draft text', () => {
+		const service = createService();
+		const number = service.addAttachment(tabA, entry('selection'));
+		service.setText(tabA, 'Explain this');
+		service.updateAttachment(tabA, number, { ...entry('selection'), modelDescription: 'Comment: focus on the return value' });
+		const draft = service.getDraft(tabA);
+		assert.deepStrictEqual({ text: draft.text, number: draft.attachments[0].number, entry: draft.attachments[0].entry }, {
+			text: 'Explain this',
+			number: 1,
+			entry: { ...entry('selection'), modelDescription: 'Comment: focus on the return value' },
+		});
+	});
+
 	test('preserves widget-assigned numbers when synchronizing a draft', () => {
 		const service = createService();
 		service.addAttachment(tabA, entry('automatic'));
