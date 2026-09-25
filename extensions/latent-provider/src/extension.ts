@@ -41,7 +41,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<ILaten
 		try {
 			const binding = await capabilityService!.resolve({ capability, preferredProviderId });
 			const secret = await manager.getSecret(binding.secretRef);
-			return { providerId: binding.providerId, modelId: binding.modelId, protocol: binding.protocol, baseUrl: binding.baseUrl, apiKey: secret };
+			return { providerId: binding.providerId, modelId: binding.modelId, protocol: binding.protocol, baseUrl: binding.baseUrl, apiKey: secret, ...(typeof binding.features.contextWindow === 'number' && binding.features.contextWindow > 0 ? { contextLength: binding.features.contextWindow } : {}) };
 		} catch {
 			return undefined;
 		}

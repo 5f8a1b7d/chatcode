@@ -72,7 +72,8 @@ async function requestAnthropic(binding: ITextBinding, secret: string | undefine
 	const body = {
 		model: binding.modelId,
 		max_tokens: binding.outputWindow || 16000,
-		messages: toAnthropicMessages(messages),
+		messages: toAnthropicMessages(messages.filter(message => message.role !== vscode.LanguageModelChatMessageRole.System)),
+		...(systemText(messages) ? { system: systemText(messages) } : {}),
 		...(options.tools?.length ? { tools: options.tools.map(tool => ({ name: tool.name, description: tool.description, input_schema: tool.inputSchema || { type: 'object', properties: {} } })) } : {}),
 	};
 	const response = await fetch(endpoint, { method: 'POST', headers: { 'content-type': 'application/json', 'x-api-key': secret || '', 'anthropic-version': '2023-06-01' }, body: JSON.stringify(body), signal });
@@ -90,8 +91,8 @@ async function requestAnthropic(binding: ITextBinding, secret: string | undefine
 
 async function requestGoogle(binding: ITextBinding, secret: string | undefined, messages: readonly vscode.LanguageModelChatRequestMessage[], progress: TextProgress, signal: AbortSignal): Promise<void> {
 	const endpoint = `${binding.baseUrl.replace(/\/$/, '')}/models/${encodeURIComponent(binding.modelId)}:generateContent`;
-	const contents = messages.map(message => ({ role: message.role === vscode.LanguageModelChatMessageRole.Assistant ? 'model' : 'user', parts: toGoogleParts(message.content) }));
-	const response = await fetch(endpoint, { method: 'POST', headers: { 'content-type': 'application/json', 'x-goog-api-key': secret || '' }, body: JSON.stringify({ contents }), signal });
+	const contents = messages.filter(message => message.role !== vscode.LanguageModelChatMessageRole.System).map(message => ({ role: message.role === vscode.LanguageModelChatMessageRole.Assistant ? 'model' : 'user', parts: toGoogleParts(message.content) }));
+	const response = await fetch(endpoint, { method: 'POST', headers: { 'content-type': 'application/json', 'x-goog-api-key': secret || '' }, body: JSON.stringify({ contents, ...(systemText(messages) ? { systemInstruction: { parts: [{ text: systemText(messages) }] } } : {}) }), signal });
 	await ensureSuccess(response);
 	const packet = await response.json() as { candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }> };
 	for (const part of packet.candidates?.[0]?.content?.parts || []) {
@@ -105,10 +106,14 @@ export function textParts(parts: readonly (vscode.LanguageModelInputPart | unkno
 	return parts.filter((part): part is vscode.LanguageModelTextPart => part instanceof vscode.LanguageModelTextPart).map(part => part.value).join('\n');
 }
 
+function systemText(messages: readonly vscode.LanguageModelChatRequestMessage[]): string {
+	return messages.filter(message => message.role === vscode.LanguageModelChatMessageRole.System).map(message => textParts(message.content)).join('\n\n');
+}
+
 function toOpenAIMessages(messages: readonly vscode.LanguageModelChatRequestMessage[]): WireMessage[] {
 	const output: WireMessage[] = [];
 	for (const message of messages) {
-		const role = message.role === vscode.LanguageModelChatMessageRole.Assistant ? 'assistant' : 'user';
+		const role = message.role === vscode.LanguageModelChatMessageRole.Assistant ? 'assistant' : message.role === vscode.LanguageModelChatMessageRole.System ? 'system' : 'user';
 		const images = message.content.filter((part): part is vscode.LanguageModelDataPart => part instanceof vscode.LanguageModelDataPart && part.mimeType.startsWith('image/'));
 		const text = textParts(message.content);
 		const content: string | Array<object> = images.length ? [{ type: 'text', text }, ...images.map(part => ({ type: 'image_url', image_url: { url: `data:${part.mimeType};base64,${Buffer.from(part.data).toString('base64')}` } }))] : text;
