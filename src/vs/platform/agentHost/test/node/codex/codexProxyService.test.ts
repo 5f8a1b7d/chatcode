@@ -14,7 +14,7 @@ import {
 	type ICopilotApiService,
 	type ICopilotApiServiceRequestOptions,
 } from '../../../node/shared/copilotApiService.js';
-import { CodexProxyService, remapCodexReviewerModel } from '../../../node/codex/codexProxyService.js';
+import { CodexProxyService, remapCodexReviewerModel, type ICodexProxyHandle } from '../../../node/codex/codexProxyService.js';
 import { extractForwardedErrorInfo } from '../../../node/shared/proxyChatError.js';
 
 // #region Test fakes
@@ -143,7 +143,7 @@ suite('CodexProxyService', () => {
 
 	ensureNoDisposablesAreLeakedInTestSuite();
 
-	async function withProxy(fn: (handle: { baseUrl: string; nonce: string }, fake: FakeCopilotApiService) => Promise<void>, now?: () => number): Promise<void> {
+	async function withProxy(fn: (handle: ICodexProxyHandle, fake: FakeCopilotApiService) => Promise<void>, now?: () => number): Promise<void> {
 		const fake = new FakeCopilotApiService();
 		const service = new CodexProxyService(now, new NullLogService(), fake);
 		const handle = await service.start(TOKEN);
@@ -163,6 +163,31 @@ suite('CodexProxyService', () => {
 			});
 			assert.strictEqual(fake.responsesCalls.at(-1)?.options?.headers?.['User-Agent'], 'vscode_codex/1.2.3');
 		});
+	});
+
+	test('managed gateway preserves the request, swaps only the local nonce, and never falls back to CAPI', async () => {
+		const http = await getHttp();
+		const received: { path?: string; auth?: string; body: string }[] = [];
+		const upstream = http.createServer((req, res) => {
+			let body = ''; req.on('data', value => body += value);
+			req.on('end', () => { received.push({ path: req.url, auth: req.headers.authorization, body }); res.writeHead(200, { 'content-type': 'text/event-stream' }); res.end('event: response.completed\ndata: {"type":"response.completed"}\n\n'); });
+		});
+		await new Promise<void>(resolve => upstream.listen(0, '127.0.0.1', resolve));
+		try {
+			await withProxy(async (handle, fake) => {
+				const address = upstream.address(); assert.ok(address && typeof address !== 'string');
+				const baseUrl = `http://127.0.0.1:${address.port}/v1`;
+				handle.setManagedProvider!({ baseUrl, token: 'synthetic-account-token' });
+				const body = JSON.stringify({ model: 'fixture', input: [{ type: 'function_call_output', call_id: 'c1', output: 'result' }], tools: [], stream: true });
+				const result = await postResponses(`${handle.baseUrl}/v1/responses`, { headers: { authorization: `Bearer ${handle.nonce}` }, body });
+				assert.strictEqual(result.status, 200);
+				assert.deepStrictEqual(received, [{ path: '/v1/responses', auth: 'Bearer synthetic-account-token', body }]);
+				assert.strictEqual(fake.responsesCalls.length, 0);
+				handle.setManagedProvider!({ baseUrl, token: '' });
+				assert.strictEqual((await postResponses(`${handle.baseUrl}/v1/responses`, { headers: { authorization: `Bearer ${handle.nonce}` }, body })).status, 401);
+				assert.strictEqual(received.length, 1); assert.strictEqual(fake.responsesCalls.length, 0);
+			});
+		} finally { await new Promise<void>(resolve => upstream.close(() => resolve())); }
 	});
 
 	suite('portable history', () => {

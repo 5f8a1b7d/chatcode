@@ -3179,6 +3179,57 @@ suite('CodexAgent prewarm eviction', () => {
 		}
 	});
 
+	test('changing permissions reloads the thread and turn inherits its instruction grants', async () => {
+		const agent = await createAgent(disposables);
+		const peer = disposables.add(createTestPeer());
+		agent['_connection'] = {
+			kind: 'ready', client: new CodexAppServerClient(peer.transport), usageSource: 'github', child: { kill: () => true },
+		} as never;
+		agent['_refreshSkillHookCustomizations'] = async () => { };
+		agent['_refreshSkillExtraRoots'] = async () => { };
+		const configurationService = agent['_configurationService'];
+		assert.ok(configurationService instanceof TestCodexConfigurationService);
+		const repo = URI.file('/repo');
+		try {
+			const { session } = await createSession(agent, { workingDirectories: [repo], model: { id: COPILOT_TEST_MODEL } });
+			const entry = agent['_sessions'].get(AgentSession.id(session))!;
+			const start = await readNextRequest(peer.outbound);
+			peer.push({ id: start.id, result: { thread: { id: 'thread' } } });
+			await entry.materializePromise;
+			const chat = URI.parse(buildDefaultChatUri(session));
+			const firstSend = agent.chats.sendMessage(chat, 'first', [repo], undefined, 'turn-1');
+			const firstTurn = await readNextRequest(peer.outbound);
+			peer.push({ id: firstTurn.id, result: {} });
+			await firstSend;
+			configurationService.setSessionConfig({ [CodexSessionConfigKey.PermissionsPreset]: 'full-access' });
+			const secondSend = agent.chats.sendMessage(chat, 'second', [repo], undefined, 'turn-2');
+			const unsubscribe = await readNextRequest(peer.outbound);
+			peer.push({ id: unsubscribe.id, result: {} });
+			const resume = await readNextRequest(peer.outbound);
+			peer.push({ id: resume.id, result: { thread: { id: 'thread' } } });
+			let secondTurn = await readNextRequest(peer.outbound);
+			while (secondTurn.method !== 'turn/start') {
+				peer.push({ id: secondTurn.id, result: secondTurn.method === 'mcpServerStatus/list' ? { servers: [] } : {} });
+				secondTurn = await readNextRequest(peer.outbound);
+			}
+			peer.push({ id: secondTurn.id, result: {} });
+			await secondSend;
+			assert.deepStrictEqual({
+				unsubscribe: unsubscribe.method,
+				resume: resume.method,
+				resumePermissions: resume.params.permissions,
+				instructionGrants: resume.params.config?.['permissions.vscode-workspace.filesystem'] !== undefined,
+				turn: secondTurn.method,
+				turnPermissions: secondTurn.params.permissions,
+			}, {
+				unsubscribe: 'thread/unsubscribe', resume: 'thread/resume', resumePermissions: ':danger-full-access',
+				instructionGrants: !isWindows, turn: 'turn/start', turnPermissions: undefined,
+			});
+		} finally {
+			peer.exit();
+		}
+	});
+
 	test('multi-root start and turn separate workspace roots from additional writable directories', async () => {
 		const additionalDirectory = URI.file('/manual-write').fsPath;
 		const sessionUri = AgentSession.uri('codex', 'multi-root');
@@ -3289,7 +3340,7 @@ suite('CodexAgent prewarm eviction', () => {
 					selectedCapabilityRoots: undefined,
 					approvalPolicy: 'on-request',
 					approvalsReviewer: 'user',
-					permissions: 'vscode-workspace',
+					permissions: undefined,
 				},
 				autoReview: {
 					approvalPolicy: 'on-request',
@@ -3354,14 +3405,22 @@ suite('CodexAgent prewarm eviction', () => {
 			const firstTurn = await readNextRequest(peer.outbound);
 			peer.push({ id: firstTurn.id, result: {} });
 			await firstSend;
+			const readReconfiguredTurn = async () => {
+				let request = await readNextRequest(peer.outbound);
+				while (request.method !== 'turn/start') {
+					peer.push({ id: request.id, result: request.method === 'thread/resume' ? { thread: { id: 'thread' } } : {} });
+					request = await readNextRequest(peer.outbound);
+				}
+				return request;
+			};
 
 			const secondSend = agent.chats.sendMessage(URI.parse(buildDefaultChatUri(created.session)), 'second', [repoA, repoC], undefined, 'turn-2');
-			const secondTurn = await readNextRequest(peer.outbound);
+			const secondTurn = await readReconfiguredTurn();
 			peer.push({ id: secondTurn.id, result: {} });
 			await secondSend;
 
 			const thirdSend = agent.chats.sendMessage(URI.parse(buildDefaultChatUri(created.session)), 'third', [repoA], undefined, 'turn-3');
-			const thirdTurn = await readNextRequest(peer.outbound);
+			const thirdTurn = await readReconfiguredTurn();
 			peer.push({ id: thirdTurn.id, result: {} });
 			await thirdSend;
 
@@ -3383,13 +3442,13 @@ suite('CodexAgent prewarm eviction', () => {
 					method: 'turn/start',
 					threadId: 'thread',
 					runtimeWorkspaceRoots: [repoA.fsPath, repoC.fsPath],
-					permissions: 'vscode-workspace',
+					permissions: undefined,
 				},
 				third: {
 					method: 'turn/start',
 					threadId: 'thread',
 					runtimeWorkspaceRoots: [repoA.fsPath],
-					permissions: 'vscode-workspace',
+					permissions: undefined,
 				},
 			});
 		} finally {
@@ -3439,7 +3498,7 @@ suite('CodexAgent prewarm eviction', () => {
 				startSelectedCapabilityRoots: undefined,
 				turnRuntimeWorkspaceRoots: [repoA.fsPath, additionalDirectory],
 				turnSelectedCapabilityRoots: undefined,
-				permissions: 'vscode-workspace',
+				permissions: undefined,
 			});
 		} finally {
 			peer.exit();
@@ -3511,7 +3570,7 @@ suite('CodexAgent prewarm eviction', () => {
 				turn: {
 					runtimeWorkspaceRoots: [repo.fsPath, additionalDirectory],
 					selectedCapabilityRoots: undefined,
-					permissions: 'vscode-workspace',
+					permissions: undefined,
 				},
 				fullAccess: {
 					runtimeWorkspaceRoots: undefined,
@@ -3733,7 +3792,7 @@ suite('CodexAgent prewarm eviction', () => {
 			runtimeWorkspaceRoots: sourceTurn.params.runtimeWorkspaceRoots,
 		}, {
 			approvalPolicy: 'on-request',
-			permissions: 'vscode-workspace-network',
+			permissions: undefined,
 			runtimeWorkspaceRoots: [start.params.cwd],
 		});
 		peer.push({ id: sourceTurn.id, result: {} });
@@ -4114,7 +4173,7 @@ suite('CodexAgent prewarm eviction', () => {
 					selectedCapabilityRoots: undefined,
 					approvalPolicy: 'on-request',
 					approvalsReviewer: 'auto_review',
-					permissions: 'vscode-workspace',
+					permissions: undefined,
 				},
 			});
 		} finally {

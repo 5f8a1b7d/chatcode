@@ -596,3 +596,24 @@ Both `IAgentHostPromptCache` and `IAgentHostSessionTitleSignal` are constructed 
 | `stateManager.getSessionSummary(session)?._meta` + `setSessionMeta(...)` for prompt cache | `IAgentHostPromptCache.read` / `.write` |
 | `stateManager.onDidChangeSessionTitle` for OTel | `IAgentHostSessionTitleSignal.onDidChangeSessionTitle` |
 | `onSessionConfigChanged` / `onChatConfigChanged` provider hooks | `IAgentConfigurationService.onDidSessionConfigChange` |
+
+### Managed Codex provider boundary
+
+An embedding client may authenticate `urn:agent-host:codex:managed-provider` with
+an in-memory token and `codexProvider` endpoint/model catalog. This switches Codex
+to that explicit catalog and the proxy's raw Responses forwarding path; it must
+not fall back to another account, provider, or model after revocation. Empty tokens
+revoke access, and changed credentials abort requests using the old credentials.
+Authentication replay retains the endpoint/catalog with the token in memory, not
+in session metadata. Never log managed request bodies or credentials.
+
+Codex remains the sole owner of its working transcript, tool loop, and compaction.
+The managed proxy is transport, not a second context assembler. Validate protocol
+changes with both synthetic proxy tests and an actual native Codex tool round trip.
+
+`VSCODE_AGENT_HOST_ALLOWED_PROVIDERS` optionally restricts provider registration;
+an unset variable preserves the default provider set, while an empty value enables
+none. `VSCODE_AGENT_HOST_CODEX_HOME` optionally isolates the native process and its
+provider configuration from the user's normal Codex home. These are generic host
+controls; product-specific endpoints, profiles, and business policy belong outside
+this module.

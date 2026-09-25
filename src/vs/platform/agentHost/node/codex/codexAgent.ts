@@ -90,7 +90,7 @@ import { resolveCodexInput } from './codexPromptResolver.js';
 import { buildUserInputRequest, emptyUserInputResponse, userInputResponseFromAnswers } from './codexUserInputMapper.js';
 import { replayThreadToTurns } from './codexReplayMapper.js';
 import { CodexSessionMetadataStore } from './codexSessionMetadataStore.js';
-import { buildCodexLaunchConfig, buildCodexResumeParams, codexPermissionProfile, CODEX_DEFAULT_MODE_REQUEST_USER_INPUT_CONFIG_KEY } from './codexLaunchConfig.js';
+import { buildCodexLaunchConfig, buildCodexResumeParams, codexInstructionPermissionConfig, codexPermissionProfile, CODEX_DEFAULT_MODE_REQUEST_USER_INPUT_CONFIG_KEY } from './codexLaunchConfig.js';
 import { codexDelegationDisplayText } from './codexDelegation.js';
 import { THREAD_LIST_MAX_PAGES, collectThreadListPages } from './codexThreadList.js';
 import { ICodexRolloutMetadata, ICodexRolloutModel, readCodexRolloutMetadata } from './codexRolloutMetadata.js';
@@ -757,6 +757,8 @@ interface ICodexSession {
 	pendingHookTrustState: ICodexSessionHookTrust | undefined;
 	/** Model provider backing the current materialized thread. */
 	materializedModelProvider: string | undefined;
+	/** Named permission profile applied at thread start/resume. */
+	materializedPermissions: string | undefined;
 	pendingModelProviderSwitch?: { readonly threadId: string; readonly fromProvider: string };
 	hasNativeHistory?: boolean;
 	/** True once a turn has been started on the (materialized) thread. */
@@ -1264,6 +1266,7 @@ export class CodexAgent extends Disposable implements IAgent {
 	private _modelCatalogGeneration = 0;
 	private _copilotModels: readonly IAgentModelInfo[] = [];
 	private _codexModels: readonly IAgentModelInfo[] = [];
+	private _managedProvider: { readonly baseUrl: string; readonly token: string; readonly models: NonNullable<AuthenticateParams['codexProvider']>['models'] } | undefined;
 	private readonly _metadataStore: CodexSessionMetadataStore;
 	private _lastSignInRequest: string | undefined;
 	private _lastSignOutRequest: string | undefined;
@@ -1607,6 +1610,23 @@ export class CodexAgent extends Disposable implements IAgent {
 	 * token flows through {@link authenticate} instead).
 	 */
 	async handleAuthenticationToken(params: AuthenticateParams): Promise<boolean> {
+		if (params.resource === 'urn:agent-host:codex:managed-provider' && !params.token) {
+			if (this._managedProvider) {
+				this._managedProvider = { ...this._managedProvider, token: '' };
+				if (this._connection.kind === 'ready') { this._connection.proxyHandle?.setManagedProvider?.(this._managedProvider); }
+			}
+			return true;
+		}
+		if (params.resource === 'urn:agent-host:codex:managed-provider' && params.codexProvider) {
+			const endpoint = new URL(params.codexProvider.baseUrl);
+			if (endpoint.username || endpoint.password || endpoint.search || endpoint.hash || endpoint.protocol !== 'https:' && !(endpoint.protocol === 'http:' && ['localhost', '127.0.0.1', '[::1]'].includes(endpoint.hostname))) { throw new Error('Managed Codex endpoint must use HTTPS or local loopback HTTP.'); }
+			if (!Array.isArray(params.codexProvider.models) || !params.codexProvider.models.length || params.codexProvider.models.some(model => !model.id || !model.name)) { throw new Error('Managed Codex catalog is empty or invalid.'); }
+			this._managedProvider = { ...params.codexProvider, token: params.token };
+			if (this._connection.kind === 'ready') { this._connection.proxyHandle?.setManagedProvider?.(this._managedProvider); }
+			this._modelCatalogGeneration++;
+			await this._queueModelRefresh();
+			return true;
+		}
 		const normalizedResource = normalizeCodexMcpResourceUrl(params.resource);
 		if (normalizedResource === undefined) {
 			return false;
@@ -1707,6 +1727,10 @@ export class CodexAgent extends Disposable implements IAgent {
 	}
 
 	private _ensureModelProviderAuthenticated(model: ModelSelection | undefined): void {
+		if (this._managedProvider) {
+			if (!this._managedProvider.token || !model || parseCodexModelSelection(model).modelProvider !== CODEX_COPILOT_MODEL_PROVIDER || !this._managedProvider.models.some(candidate => candidate.id === parseCodexModelSelection(model).modelId)) { throw new Error('The selected model is not authorized by the managed provider.'); }
+			return;
+		}
 		const modelProvider = model ? parseCodexModelSelection(model).modelProvider : CODEX_COPILOT_MODEL_PROVIDER;
 		if (modelProvider !== CODEX_COPILOT_MODEL_PROVIDER) {
 			return;
@@ -1818,6 +1842,10 @@ export class CodexAgent extends Disposable implements IAgent {
 	}
 
 	private _modelContextConfigOverrides(model: ModelSelection | undefined): Record<string, JsonValue> {
+		if (this._managedProvider && model) {
+			const contextWindow = this._managedProvider.models.find(candidate => candidate.id === parseCodexModelSelection(model).modelId)?.contextWindow;
+			return contextWindow && contextWindow > 0 ? { model_context_window: contextWindow } : {};
+		}
 		const contextSize = getModelContextSize(model);
 		const offeredSizes = model
 			? this._models.get().find(candidate => candidate.id === model.id)?.configSchema?.properties[ContextSizeConfigKey]?.enum
@@ -1921,6 +1949,11 @@ export class CodexAgent extends Disposable implements IAgent {
 		return distinctAbsolutePaths(this._workingDirectories(session).map(directory => directory.fsPath));
 	}
 
+	private _instructionPermissionConfig(workingDirectories: readonly string[]): Record<string, JsonValue> {
+		const home = process.env.VSCODE_AGENT_HOST_CODEX_HOME ?? process.env[AgentHostCodexAgentCodexHomeEnvVar] ?? process.env.CODEX_HOME ?? join(this._environmentService.userHome.fsPath, '.codex');
+		return codexInstructionPermissionConfig(workingDirectories, home);
+	}
+
 	private _isMultiRootActive(session: ICodexSession): boolean {
 		return session.multiRootEnabled && (session.workingDirectories?.length ?? 0) > 1;
 	}
@@ -1953,7 +1986,7 @@ export class CodexAgent extends Disposable implements IAgent {
 			customization.developerInstructions,
 			session.managedWorkingDirectory ? AGENT_HOST_WORKSPACELESS_INSTRUCTIONS : '',
 		].filter(instruction => instruction.length > 0).join('\n\n');
-		const config: Record<string, JsonValue> = {};
+		const config: Record<string, JsonValue> = this._instructionPermissionConfig(this._runtimeWorkspaceRoots(session));
 		if (customization.agentRoles.length > 0) {
 			const root = session.customizationDirectory?.fsPath
 				?? await fs.promises.mkdtemp(join(os.tmpdir(), 'vscode-agent-codex-customizations-'));
@@ -1980,6 +2013,7 @@ export class CodexAgent extends Disposable implements IAgent {
 			})),
 		];
 		const signature = JSON.stringify({
+			instructionPermissions: config,
 			agent: session.agent?.uri,
 			agentRoles: customization.agentRoles,
 			developerInstructions,
@@ -2038,6 +2072,11 @@ export class CodexAgent extends Disposable implements IAgent {
 	}
 
 	private async _refreshModels(attempt = 0, generation = this._modelCatalogGeneration): Promise<void> {
+		if (this._managedProvider) {
+			this._models.set(this._managedProvider.models.map(model => ({ provider: CODEX_AGENT_PROVIDER_ID, id: toCodexModelSelectionId(CODEX_COPILOT_MODEL_PROVIDER, model.id), name: model.name, maxContextWindow: model.contextWindow || undefined, supportsVision: model.supportsVision === true })), undefined);
+			this._sdkSetupChannel.refresh();
+			return;
+		}
 		if (this._isShuttingDown || this._store.isDisposed) {
 			return;
 		}
@@ -2486,6 +2525,7 @@ export class CodexAgent extends Disposable implements IAgent {
 		let proxyHandle: ICodexProxyHandle;
 		try {
 			proxyHandle = await raceCancellationError(proxyStart, token);
+			if (this._managedProvider) { proxyHandle.setManagedProvider?.(this._managedProvider); }
 		} catch (error) {
 			// The proxy API has no cancellation input. If its start finishes after
 			// this connection was cancelled, release that late handle immediately.
@@ -2507,7 +2547,7 @@ export class CodexAgent extends Disposable implements IAgent {
 			env.TMPDIR = sandboxTempDirectory;
 			env.TMP = sandboxTempDirectory;
 			env.TEMP = sandboxTempDirectory;
-			const userCodexHome = process.env[AgentHostCodexAgentCodexHomeEnvVar];
+			const userCodexHome = process.env.VSCODE_AGENT_HOST_CODEX_HOME ?? process.env[AgentHostCodexAgentCodexHomeEnvVar];
 			if (userCodexHome) {
 				env.CODEX_HOME = userCodexHome;
 			}
@@ -3662,6 +3702,7 @@ export class CodexAgent extends Disposable implements IAgent {
 			materializedHookTrustSig: undefined,
 			pendingHookTrustState: undefined,
 			materializedModelProvider: parent.materializedModelProvider,
+			materializedPermissions: parent.materializedPermissions,
 			hasNativeHistory: parent.hasNativeHistory,
 			firstTurnSent: true,
 			model: parent.model,
@@ -4794,6 +4835,7 @@ export class CodexAgent extends Disposable implements IAgent {
 			materializedHookTrustSig: undefined,
 			pendingHookTrustState: undefined,
 			materializedModelProvider: undefined,
+			materializedPermissions: undefined,
 			hasNativeHistory: false,
 			firstTurnSent: false,
 			model,
@@ -4874,6 +4916,7 @@ export class CodexAgent extends Disposable implements IAgent {
 			const dynamicTools = this._buildDynamicTools(scratch);
 			const threadConfig: Record<string, JsonValue> = {
 				web_search: narrowWebSearchMode(validatedConfig[CodexSessionConfigKey.WebSearchMode]) ?? codexSessionConfigDefaults[CodexSessionConfigKey.WebSearchMode],
+				...this._instructionPermissionConfig(runtimeWorkspaceRoots ?? [workingDirectory.fsPath]),
 				...this._modelContextConfigOverrides(model),
 				[CODEX_DEFAULT_MODE_REQUEST_USER_INPUT_CONFIG_KEY]: true,
 			};
@@ -4904,6 +4947,7 @@ export class CodexAgent extends Disposable implements IAgent {
 			// materialized (not resumed) entry keyed by the thread id.
 			const session = this._createResumedSessionEntry(threadId, threadId, workingDirectory, model, target, undefined, undefined, options?.agent);
 			session.needsResume = !startedOnCurrentConnection;
+			session.materializedPermissions = permissions;
 			session.firstTurnSent = false;
 			session.materializedEventFired = false;
 			session.materializedMcpSig = mcpServersSignature(mcpServers);
@@ -5117,6 +5161,7 @@ export class CodexAgent extends Disposable implements IAgent {
 			materializedHookTrustSig: undefined,
 			pendingHookTrustState: undefined,
 			materializedModelProvider,
+			materializedPermissions: undefined,
 			hasNativeHistory: materializedModelProvider ? materializedModelProvider === CODEX_OPENAI_MODEL_PROVIDER : undefined,
 			firstTurnSent: true,
 			model,
@@ -5257,6 +5302,7 @@ export class CodexAgent extends Disposable implements IAgent {
 			}
 			const forkCwd = forkManagedWorkingDirectory?.fsPath ?? runtimeWorkspaceRoots?.[0] ?? sourcePrimary?.fsPath;
 			const forkConfig: Record<string, JsonValue> = {
+				...this._instructionPermissionConfig(forkCwd ? [forkCwd] : []),
 				...this._modelContextConfigOverrides(model),
 				...this._portableHistoryConfig(hasNativeHistory),
 				[CODEX_DEFAULT_MODE_REQUEST_USER_INPUT_CONFIG_KEY]: true,
@@ -5462,8 +5508,10 @@ export class CodexAgent extends Disposable implements IAgent {
 			return;
 		}
 		const resolvedPermissions = this._resolveSessionPermissions(configResource);
-		const { approvalPolicy, sandboxMode, approvalsReviewer } = resolvedPermissions;
-		const permissions = this._permissionProfile(config, sandboxMode);
+		const approvalPolicy = session.agentMergeTurn ? 'on-request' : resolvedPermissions.approvalPolicy;
+		const sandboxMode = session.agentMergeTurn && resolvedPermissions.sandboxMode === 'danger-full-access' ? 'workspace-write' : resolvedPermissions.sandboxMode;
+		const { approvalsReviewer } = resolvedPermissions;
+		const permissions = this._permissionProfile(config, sandboxMode, session.agentMergeTurn ? false : undefined);
 		// Attach the session's MCP servers per-thread (verified: codex starts
 		// them for this thread only): the workbench's root `mcpServers` config
 		// merged with this session's enabled client-plugin servers. Passing them
@@ -5537,6 +5585,7 @@ export class CodexAgent extends Disposable implements IAgent {
 		}
 		session.threadId = threadId;
 		session.needsResume = !startedOnCurrentConnection;
+		session.materializedPermissions = permissions;
 		session.materializedMcpSig = mcpServersSignature(mcpServers);
 		session.materializedCustomizationsSig = customizationLaunch.signature;
 		session.materializedToolsSig = toolsSignature(session.clientToolSet.merged());
@@ -5947,6 +5996,10 @@ export class CodexAgent extends Disposable implements IAgent {
 			conn = (await this._ensureThreadConnection(session, conn)).connection;
 			const threadId = session.threadId!;
 			const turnOptions = this._turnStartOptions(session, resolvedModel.modelId, currentCustomizationLaunch.developerInstructions, configResource);
+			// Re-selecting a profile at turn/start resolves it from process-global
+			// config and drops the thread-local AGENTS.md grants. Profile changes
+			// are applied by _ensureCurrentLaunchBeforeTurn via thread/resume.
+			delete turnOptions.permissions;
 			const modelProvider = session.materializedModelProvider;
 			const providerSwitch = session.pendingModelProviderSwitch;
 			const currentAccount = this._openAIAccountState;
@@ -6035,8 +6088,13 @@ export class CodexAgent extends Disposable implements IAgent {
 			}
 			const mcpSignature = mcpServersSignature(this._buildSessionMcpServers(session));
 			const toolSignature = toolsSignature(session.clientToolSet.merged());
+			const config = this._readSessionConfig(configResource);
+			const resolvedPermissions = this._resolveSessionPermissions(configResource);
+			const sandboxMode = session.agentMergeTurn && resolvedPermissions.sandboxMode === 'danger-full-access' ? 'workspace-write' : resolvedPermissions.sandboxMode;
+			const permissionProfile = this._permissionProfile(config, sandboxMode, session.agentMergeTurn ? false : undefined);
 			if (mcpSignature === session.materializedMcpSig
 				&& (session.firstTurnSent || toolSignature === session.materializedToolsSig)
+				&& permissionProfile === session.materializedPermissions
 				&& customizationLaunch.signature === session.materializedCustomizationsSig) {
 				return customizationLaunch;
 			}
@@ -6047,6 +6105,8 @@ export class CodexAgent extends Disposable implements IAgent {
 				materializedCustomizations: session.materializedCustomizationsSig,
 				targetMcp: mcpSignature,
 				targetTools: toolSignature,
+				targetPermissions: permissionProfile,
+				materializedPermissions: session.materializedPermissions,
 				targetCustomizations: customizationLaunch.signature,
 			});
 			if (unresolvedState === previousUnresolvedState) {
@@ -6694,6 +6754,7 @@ export class CodexAgent extends Disposable implements IAgent {
 					session.pendingModelProviderSwitch = { threadId, fromProvider: session.materializedModelProvider };
 				}
 				session.materializedModelProvider = resolvedModel.modelProvider;
+				session.materializedPermissions = permissions;
 				void this._refreshMcpInventory(conn.client, threadId);
 			})().catch(err => {
 				if (!session.disposed) {

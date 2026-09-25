@@ -46,6 +46,7 @@ export interface ICodexProxyHandle extends ILoopbackProxyHandle {
 	 * codex process and its nonce are unchanged.
 	 */
 	setToken(githubToken: string): void;
+	setManagedProvider?(provider: { readonly baseUrl: string; readonly token: string } | undefined): void;
 }
 
 export interface ICodexProxyService {
@@ -68,6 +69,7 @@ export const CODEX_PORTABLE_HISTORY_HEADER = 'x-vscode-codex-portable-history';
 
 /** Subclass-owned per-bind mutable state: the active outbound CAPI token. */
 interface ICodexProxyState {
+	managedProvider?: { readonly baseUrl: string; readonly token: string };
 	/** Token cell — read fresh on each outbound request. */
 	githubToken: string;
 	/**
@@ -188,6 +190,14 @@ export class CodexProxyService extends LoopbackProxyServer<ICodexProxyState, str
 		return {
 			baseUrl: runtime.baseUrl,
 			nonce: runtime.nonce,
+			setManagedProvider: provider => {
+				if (disposed) { return; }
+				const previous = runtime.state.managedProvider;
+				if (previous && (previous.token !== provider?.token || previous.baseUrl !== provider?.baseUrl)) {
+					for (const request of runtime.inFlight) { request.ac.abort(); request.res.destroy(); }
+				}
+				runtime.state.managedProvider = provider;
+			},
 			setToken: (newToken: string) => {
 				if (disposed) {
 					return;
@@ -262,6 +272,27 @@ export class CodexProxyService extends LoopbackProxyServer<ICodexProxyState, str
 			body = await readProxyRequestBody(req);
 		} catch (err) {
 			writeJsonError(res, 400, 'invalid_request_error', `Failed to read request body: ${err instanceof Error ? err.message : String(err)}`);
+			return;
+		}
+
+		if (runtime.state.managedProvider) {
+			const provider = runtime.state.managedProvider;
+			if (!provider.token) { writeJsonError(res, 401, 'authentication_error', 'Managed provider is signed out'); return; }
+			const entry: IProxyInFlight = { ac: new AbortController(), res, clientGone: false };
+			runtime.inFlight.add(entry);
+			const onClose = () => { entry.clientGone = true; entry.ac.abort(); };
+			res.on('close', onClose);
+			try {
+				const upstream = await fetch(`${provider.baseUrl.replace(/\/+$/, '')}/responses`, { method: 'POST', redirect: 'error', headers: { 'content-type': 'application/json', authorization: `Bearer ${provider.token}` }, body, signal: entry.ac.signal });
+				res.writeHead(upstream.status, { 'Content-Type': upstream.headers.get('content-type') ?? 'application/json' });
+				if (upstream.body) {
+					const reader = upstream.body.getReader();
+					try { while (true) { const chunk = await reader.read(); if (chunk.done) { break; } if (!res.write(chunk.value)) { await new Promise<void>(resolve => { const done = () => { res.off('drain', done); res.off('close', done); resolve(); }; res.once('drain', done); res.once('close', done); }); } entry.ac.signal.throwIfAborted(); } }
+					finally { await reader.cancel().catch(() => undefined); reader.releaseLock(); }
+				}
+				res.end();
+			} catch { if (!entry.clientGone) { if (!res.headersSent) { writeJsonError(res, 502, 'api_error', 'Managed model transport failed'); } else { res.destroy(); } } }
+			finally { res.off('close', onClose); runtime.inFlight.delete(entry); }
 			return;
 		}
 

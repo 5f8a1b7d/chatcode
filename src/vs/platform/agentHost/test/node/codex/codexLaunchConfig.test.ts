@@ -5,10 +5,24 @@
 
 import * as assert from 'assert';
 import { ensureNoDisposablesAreLeakedInTestSuite } from '../../../../../base/test/common/utils.js';
-import { buildCodexLaunchConfig, buildCodexResumeParams, codexPermissionProfile, codexPermissionProfileOverrides } from '../../../node/codex/codexLaunchConfig.js';
+import { buildCodexLaunchConfig, buildCodexResumeParams, codexInstructionPermissionConfig, codexPermissionProfile, codexPermissionProfileOverrides } from '../../../node/codex/codexLaunchConfig.js';
 
 suite('CodexLaunchConfig', () => {
 	ensureNoDisposablesAreLeakedInTestSuite();
+
+	test('ancestor instruction reads preserve sandbox floors without opening parent directories', () => {
+		const config = codexInstructionPermissionConfig(['/repo/nested'], '/private-home', 'darwin');
+		assert.deepStrictEqual(config, {
+			'permissions.vscode-workspace.filesystem': {
+				':root': 'deny', ':minimal': 'read', ':tmpdir': 'write', ':slash_tmp': 'deny',
+				'/private-home/AGENTS.md': 'read', '/private-home/AGENTS.override.md': 'read',
+				'/repo/nested/AGENTS.md': 'read', '/repo/nested/AGENTS.override.md': 'read',
+				'/repo/AGENTS.md': 'read', '/repo/AGENTS.override.md': 'read',
+				'/AGENTS.md': 'read', '/AGENTS.override.md': 'read',
+			},
+		});
+		assert.deepStrictEqual(codexInstructionPermissionConfig([], 'C:\\home', 'win32'), {});
+	});
 
 	test('adds the Copilot proxy and enforces telemetry overrides after extra arguments', () => {
 		const config = buildCodexLaunchConfig({ PATH: '/bin', OPENAI_API_KEY: 'personal' }, { baseUrl: 'http://127.0.0.1:1234', nonce: 'nonce' }, ['--log-level=debug', '-c', 'analytics.enabled=true']);

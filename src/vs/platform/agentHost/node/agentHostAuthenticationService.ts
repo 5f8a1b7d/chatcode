@@ -32,6 +32,7 @@ export interface IAgentHostAuthenticationController {
 }
 
 interface IStoredAuthToken {
+	readonly codexProvider?: AuthenticateParams['codexProvider'];
 	readonly resource: string;
 	readonly scopes: readonly string[];
 	readonly token: string;
@@ -109,7 +110,7 @@ export class AgentHostAuthenticationService extends Disposable implements IAgent
 			// while clearing its own live state.
 			this._tokens.delete(key);
 		} else if (authenticated) {
-			this._tokens.set(key, { resource: params.resource, scopes, token: params.token, expiresAt });
+			this._tokens.set(key, { resource: params.resource, scopes, token: params.token, expiresAt, codexProvider: params.codexProvider });
 		}
 		const token = this._tokens.get(key)?.token;
 		if (previousToken !== token) {
@@ -127,7 +128,7 @@ export class AgentHostAuthenticationService extends Disposable implements IAgent
 				continue;
 			}
 			const expiresIn = getRemainingTimeInSeconds(stored.expiresAt, now);
-			const params: AuthenticateParams = { resource: stored.resource, scopes: stored.scopes, token: stored.token, expiresIn };
+			const params: AuthenticateParams = { resource: stored.resource, scopes: stored.scopes, token: stored.token, expiresIn, codexProvider: stored.codexProvider };
 			if (protectedResources.has(stored.resource)) {
 				try {
 					await provider.authenticate(stored.resource, stored.token, expiresIn);
