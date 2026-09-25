@@ -14,6 +14,8 @@ import { IWorkbenchContribution } from '../../../common/contributions.js';
  * The public build never sets them; a derivative build may.
  */
 export interface ILatentDerivativeProductConfiguration {
+	/** Whether the derivative exposes the public product's Copilot integrations. */
+	readonly copilotEnabled?: boolean;
 	/** Hides local model configuration (Provider Manager, custom providers, credentials, token plans). */
 	readonly hideProviderConfiguration?: boolean;
 	/** Optional chat participant selected by a derivative's per-tab composer. */
@@ -28,7 +30,12 @@ export function getLatentDerivativeConfiguration(productService: IProductService
 	return typeof value === 'object' && value !== null ? value as ILatentDerivativeProductConfiguration : undefined;
 }
 
+export function isLatentCopilotEnabled(productService: IProductService): boolean {
+	return getLatentDerivativeConfiguration(productService)?.copilotEnabled !== false;
+}
+
 export const LatentDerivativeBuildContext = new RawContextKey<boolean>('latent.derivativeBuild', false, localize('latent.derivativeBuild', "Whether this is a derivative build with product overrides."));
+export const LatentCopilotEnabledContext = new RawContextKey<boolean>('latent.copilotEnabled', true, localize('latent.copilotEnabled', "Whether Copilot integrations are enabled in this product."));
 export const LatentProviderConfigurationHiddenContext = new RawContextKey<boolean>('latent.providerConfigurationHidden', false, localize('latent.providerConfigurationHidden', "Whether local model configuration is hidden by the product."));
 
 /** Module path of the optional workbench overlay a derivative build places next to the fork folders. */
@@ -50,6 +57,7 @@ export class LatentProductContribution extends Disposable implements IWorkbenchC
 		super();
 		const configuration = getLatentDerivativeConfiguration(productService);
 		LatentDerivativeBuildContext.bindTo(contextKeyService).set(!!configuration);
+		LatentCopilotEnabledContext.bindTo(contextKeyService).set(configuration?.copilotEnabled !== false);
 		LatentProviderConfigurationHiddenContext.bindTo(contextKeyService).set(configuration?.hideProviderConfiguration === true);
 		if (configuration) {
 			void this.loadOverlay();
