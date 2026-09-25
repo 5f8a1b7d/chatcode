@@ -397,7 +397,8 @@ export class LatentSelectionMainService extends Disposable implements ILatentSel
 		}
 		void this.renderOverlay();
 		this._onDidRequestAction.fire({ targetWindowId: this.targetWindowId, actionId, action, comment, selection: this.overlayState.selection });
-		if (!descriptor.showsResult && !this.pinned) {
+		const opensEditorComment = action === 'latent.selection.addToChat' && this.overlayState.selection.source === 'editor';
+		if (!descriptor.showsResult && (!this.pinned || opensEditorComment)) {
 			const targetWindowId = this.targetWindowId;
 			this.hideOverlay();
 			this.windowsMainService.getWindowById(targetWindowId)?.focus();
@@ -518,7 +519,7 @@ const preview=document.getElementById('preview');preview.textContent=(state.sele
 if(state.selection.truncated){const b=document.createElement('span');b.className='badge';b.textContent=labels.truncated;preview.append(b);}
 const bar=document.getElementById('bar');bar.replaceChildren();
 if(!state.actions.length){const e=document.createElement('span');e.className='empty';e.textContent=labels.noActions;bar.append(e);}
-for(const action of state.actions){const a=document.createElement('a');a.href='latent-selection://action/'+encodeURIComponent(action.id);a.textContent=action.label;a.title=action.label;if(action.id==='latent.selection.addToChat'){a.addEventListener('click',event=>{event.preventDefault();commentForm.hidden=false;comment.focus();location.href='latent-selection://comment';});}bar.append(a);}
+for(const action of state.actions){const a=document.createElement('a');a.href='latent-selection://action/'+encodeURIComponent(action.id);a.textContent=action.label;a.title=action.label;if(action.id==='latent.selection.addToChat'&&state.selection.source!=='editor'){a.addEventListener('click',event=>{event.preventDefault();commentForm.hidden=false;comment.focus();location.href='latent-selection://comment';});}bar.append(a);}
 document.getElementById('newer').className='newer'+(state.hasNewer?' visible':'');
 const result=document.getElementById('result');const visible=!!state.phase;result.className='result'+(visible?' visible':'')+(state.phase==='running'?' running':'')+(state.phase==='failed'?' failed':'');result.textContent='';
 if(state.phase==='running'){const dot=document.createElement('span');dot.className='dot';result.append(dot,document.createTextNode(state.result||labels.working));}else if(state.result){result.textContent=state.result;}

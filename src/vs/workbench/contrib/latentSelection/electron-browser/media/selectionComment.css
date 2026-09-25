@@ -1,0 +1,210 @@
+.monaco-editor .latent-selection-comment-range {
+	background-color: var(--vscode-editor-inactiveSelectionBackground);
+}
+
+.monaco-editor .latent-selection-comment-input {
+	display: flex;
+	align-items: center;
+	box-sizing: border-box;
+	height: 38px;
+	padding: 0 14px;
+	overflow: hidden;
+	color: var(--vscode-input-foreground);
+	background: var(--vscode-input-background);
+	border: 1px solid var(--vscode-widget-border, transparent);
+	border-radius: 19px;
+	box-shadow: 0 4px 14px var(--vscode-widget-shadow);
+}
+
+.monaco-editor .latent-selection-comment-input:focus-within {
+	border-color: var(--vscode-focusBorder);
+}
+
+.monaco-editor .latent-selection-comment-input textarea {
+	position: absolute;
+	top: 0;
+	right: 14px;
+	bottom: 0;
+	left: 14px;
+	box-sizing: border-box;
+	width: auto;
+	height: 100%;
+	min-width: 0;
+	padding: 8px 0;
+	margin: 0;
+	overflow: hidden;
+	color: inherit;
+	font: inherit;
+	line-height: 20px;
+	resize: none;
+	background: transparent;
+	border: 0;
+	outline: 0;
+}
+
+.monaco-editor .latent-selection-comment-input textarea:focus {
+	outline: 0;
+}
+
+.monaco-editor .latent-selection-comment-input textarea::placeholder {
+	color: var(--vscode-input-placeholderForeground);
+}
+
+.monaco-editor .latent-selection-comment-input.expanded {
+	display: grid;
+	grid-template-rows: minmax(30px, 1fr) 34px;
+	gap: 8px;
+	height: 120px;
+	padding: 12px 16px 10px;
+	border-radius: 20px;
+}
+
+.monaco-editor .latent-selection-comment-input.expanded textarea {
+	position: static;
+	width: 100%;
+	height: auto;
+	min-height: 0;
+	padding: 0 10px 0 0;
+	overflow-x: hidden;
+	overflow-y: scroll;
+	line-height: 22px;
+	scrollbar-width: none;
+}
+
+.monaco-editor .latent-selection-comment-input.expanded textarea::-webkit-scrollbar {
+	display: none;
+}
+
+.monaco-editor .latent-selection-comment-scrollbar {
+	position: absolute;
+	top: 12px;
+	right: 8px;
+	bottom: 52px;
+	display: none;
+	width: 8px;
+}
+
+.monaco-editor .latent-selection-comment-input.expanded.scrollable .latent-selection-comment-scrollbar {
+	display: block;
+}
+
+.monaco-editor .latent-selection-comment-scrollbar-thumb {
+	position: absolute;
+	top: 0;
+	right: 1px;
+	width: 6px;
+	background: var(--vscode-scrollbarSlider-activeBackground);
+	border-radius: 3px;
+	cursor: pointer;
+}
+
+.monaco-editor .latent-selection-comment-controls {
+	display: none;
+	align-items: center;
+	min-width: 0;
+}
+
+.monaco-editor .latent-selection-comment-input.expanded .latent-selection-comment-controls {
+	display: flex;
+}
+
+.monaco-editor .latent-selection-comment-control-spacer {
+	flex: 1;
+}
+
+.monaco-editor .latent-selection-comment-icon-button,
+.monaco-editor .latent-selection-comment-button {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	box-sizing: border-box;
+	height: 34px;
+	padding: 0;
+	color: var(--vscode-foreground);
+	font: 13px/1 var(--vscode-font-family);
+	background: transparent;
+	border: 1px solid transparent;
+	border-radius: 17px;
+	cursor: pointer;
+}
+
+.monaco-editor .latent-selection-comment-icon-button {
+	width: 34px;
+	font-size: 18px;
+}
+
+.monaco-editor .latent-selection-comment-icon-button.dictate {
+	margin-right: 14px;
+}
+
+.monaco-editor .latent-selection-comment-button {
+	min-width: 66px;
+	padding: 0 16px;
+}
+
+.monaco-editor .latent-selection-comment-button.cancel {
+	margin-right: 8px;
+	background: var(--vscode-button-secondaryBackground);
+	border-color: var(--vscode-button-border, transparent);
+}
+
+.monaco-editor .latent-selection-comment-button.cancel:hover {
+	background: var(--vscode-button-secondaryHoverBackground);
+}
+
+.monaco-editor .latent-selection-comment-button.save {
+	color: var(--vscode-button-foreground);
+	background: var(--vscode-button-background);
+	border-color: var(--vscode-button-border, transparent);
+}
+
+.monaco-editor .latent-selection-comment-button.save:hover {
+	background: var(--vscode-button-hoverBackground);
+}
+
+.monaco-editor .latent-selection-comment-icon-button:hover {
+	background: var(--vscode-toolbar-hoverBackground);
+}
+
+.monaco-editor .latent-selection-comment-icon-button.recording {
+	color: var(--vscode-testing-iconFailed);
+	background: var(--vscode-toolbar-activeBackground);
+}
+
+.monaco-editor .latent-selection-comment-icon-button:focus-visible,
+.monaco-editor .latent-selection-comment-button:focus-visible {
+	outline: 1px solid var(--vscode-focusBorder);
+	outline-offset: 2px;
+}
+
+.monaco-editor .latent-selection-comment-icon-button:disabled,
+.monaco-editor .latent-selection-comment-button:disabled {
+	opacity: 0.45;
+	cursor: default;
+}
+
+.monaco-editor .latent-selection-comment-marker {
+	z-index: 1;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 26px;
+	height: 26px;
+	padding: 0;
+	color: var(--vscode-button-foreground);
+	font: 600 13px/1 var(--vscode-font-family);
+	background: var(--vscode-button-background);
+	border: 2px solid var(--vscode-editor-background);
+	border-radius: 50%;
+	box-shadow: 0 2px 6px var(--vscode-widget-shadow);
+	cursor: pointer;
+}
+
+.monaco-editor .latent-selection-comment-marker:hover {
+	background: var(--vscode-button-hoverBackground);
+}
+
+.monaco-editor .latent-selection-comment-marker:focus-visible {
+	outline: 1px solid var(--vscode-focusBorder);
+	outline-offset: 2px;
+}

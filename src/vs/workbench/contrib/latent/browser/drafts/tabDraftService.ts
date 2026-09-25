@@ -80,6 +80,17 @@ export class TabDraftService extends Disposable implements ITabDraftService {
 		return number;
 	}
 
+	updateAttachment(tabKey: ITabKey, number: number, entry: IChatRequestVariableEntry): void {
+		const draft = this.load(tabKey);
+		const index = draft.attachments.findIndex(attachment => attachment.number === number && attachment.removedAt === undefined);
+		if (index < 0) {
+			return;
+		}
+		const attachment = draft.attachments[index];
+		draft.attachments[index] = { ...attachment, entry };
+		this.save(draft);
+	}
+
 	removeAttachment(tabKey: ITabKey, number: number): void {
 		const draft = this.load(tabKey);
 		const index = draft.attachments.findIndex(attachment => attachment.number === number && attachment.removedAt === undefined);
