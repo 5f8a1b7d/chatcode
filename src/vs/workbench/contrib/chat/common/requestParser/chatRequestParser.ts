@@ -14,7 +14,7 @@ import { IChatAgentAttachmentCapabilities, IChatAgentData, IChatAgentService } f
 import { IChatSlashCommandService } from '../participants/chatSlashCommands.js';
 import { IPromptsService, matchesSessionType } from '../promptSyntax/service/promptsService.js';
 import { ToolAndToolSetEnablementMap, IToolData, IToolSet, isToolSet } from '../tools/languageModelToolsService.js';
-import { ChatRequestAgentPart, ChatRequestAgentSubcommandPart, ChatRequestDynamicVariablePart, ChatRequestSlashCommandPart, ChatRequestSlashPromptPart, ChatRequestTextPart, ChatRequestToolPart, ChatRequestToolSetPart, IParsedChatRequest, IParsedChatRequestPart, chatAgentLeader, chatSubcommandLeader, chatVariableLeader } from './chatParserTypes.js';
+import { ChatRequestAgentPart, ChatRequestAgentSubcommandPart, ChatRequestDynamicVariablePart, ChatRequestSlashCommandPart, ChatRequestSlashPromptPart, ChatRequestTextPart, ChatRequestToolPart, ChatRequestToolSetPart, IParsedChatRequest, IParsedChatRequestPart, chatAgentLeader, chatSubcommandLeader } from './chatParserTypes.js';
 
 export const agentReg = /^@([\w_\-\.]+)(?=(\s|$|\b))/i; // An @-agent
 export const variableReg = /^#([\w_\-]+)(:\d+)?(?=(\s|$|\b))/i; // A #-variable with an optional numeric : arg (@response:2)
@@ -70,10 +70,9 @@ export class ChatRequestParser {
 			const char = message.charAt(i);
 			let newPart: IParsedChatRequestPart | undefined;
 			if (previousChar.match(/\s/) || i === 0) {
-				if (char === chatVariableLeader) {
-					newPart = this.tryToParseVariable(message.slice(i), i, new Position(lineNumber, column), parts, toolsByName, toolSetsByName);
-				} else if (char === chatAgentLeader) {
-					newPart = this.tryToParseAgent(message.slice(i), message, i, new Position(lineNumber, column), parts, location, context);
+				if (char === chatAgentLeader) {
+					newPart = this.tryToParseAgent(message.slice(i), message, i, new Position(lineNumber, column), parts, location, context)
+						?? this.tryToParseTool(message.slice(i), i, new Position(lineNumber, column), toolsByName, toolSetsByName);
 				} else if (char === chatSubcommandLeader) {
 					newPart = this.tryToParseSlashCommand(message.slice(i), message, i, new Position(lineNumber, column), parts, location, context);
 				}
@@ -173,8 +172,8 @@ export class ChatRequestParser {
 		return new ChatRequestAgentPart(agentRange, agentEditorRange, agent);
 	}
 
-	private tryToParseVariable(message: string, offset: number, position: IPosition, parts: ReadonlyArray<IParsedChatRequestPart>, toolsByName: ReadonlyMap<string, IToolData>, toolSetsByName: ReadonlyMap<string, IToolSet>): ChatRequestToolPart | ChatRequestToolSetPart | undefined {
-		const nextVariableMatch = message.match(variableReg);
+	private tryToParseTool(message: string, offset: number, position: IPosition, toolsByName: ReadonlyMap<string, IToolData>, toolSetsByName: ReadonlyMap<string, IToolSet>): ChatRequestToolPart | ChatRequestToolSetPart | undefined {
+		const nextVariableMatch = message.match(agentReg);
 		if (!nextVariableMatch) {
 			return;
 		}
@@ -203,8 +202,8 @@ export class ChatRequestParser {
 			return;
 		}
 
-		if (parts.some(p => !(p instanceof ChatRequestAgentPart) && !(p instanceof ChatRequestTextPart && p.text.trim() === ''))) {
-			// no other part than agent or non-whitespace text allowed: that also means no other slash command
+		if (parts.some(p => !(p instanceof ChatRequestAgentPart) && !(p instanceof ChatRequestToolPart) && !(p instanceof ChatRequestToolSetPart) && !(p instanceof ChatRequestTextPart && p.text.trim() === ''))) {
+			// Only actors and whitespace may precede an action; never another action.
 			return;
 		}
 
