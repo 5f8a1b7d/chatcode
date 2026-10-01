@@ -39,7 +39,11 @@ export class EditorHeaderControl extends Disposable {
 			}
 			return this.groupsView.partOptions.tabHeight === 'compact' ? EditorHeaderControl.COMPACT_HEIGHT : EditorHeaderControl.DEFAULT_HEIGHT;
 		}
-		return this.breadcrumbsControl?.isHidden() === false ? BreadcrumbsControl.HEIGHT : 0;
+		return this.breadcrumbsControl?.isHidden() === false ? this.breadcrumbsHeight : 0;
+	}
+
+	private get breadcrumbsHeight(): number {
+		return this.groupsView.partOptions.breadcrumbsHeight ?? BreadcrumbsControl.HEIGHT;
 	}
 
 	constructor(
@@ -106,7 +110,7 @@ export class EditorHeaderControl extends Disposable {
 				breadcrumbsWidth = Math.max(0, width);
 				this.breadcrumbsContainer.style.width = `${breadcrumbsWidth}px`;
 			}
-			this.breadcrumbsControl.layout(new Dimension(breadcrumbsWidth, BreadcrumbsControl.HEIGHT));
+			this.breadcrumbsControl.layout(new Dimension(breadcrumbsWidth, this.breadcrumbsHeight));
 		}
 	}
 

@@ -3344,7 +3344,14 @@ class EditorInlayHints extends BaseEditorOption<EditorOption.inlayHints, IEditor
 class EditorLineDecorationsWidth extends BaseEditorOption<EditorOption.lineDecorationsWidth, number | string, number> {
 
 	constructor() {
-		super(EditorOption.lineDecorationsWidth, 'lineDecorationsWidth', 10);
+		super(EditorOption.lineDecorationsWidth, 'lineDecorationsWidth', 10, {
+			anyOf: [
+				{ type: 'integer', minimum: 0, maximum: 1000 },
+				{ type: 'string', pattern: '^\\d+(\\.\\d+)?ch$' }
+			],
+			default: 10,
+			description: nls.localize('lineDecorationsWidth', "Controls the width of the space between the line numbers and the text, in pixels or as a multiple of the character width (for example `2ch`). Folding controls add to it.")
+		});
 	}
 
 	public validate(input: unknown): number {

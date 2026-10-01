@@ -98,6 +98,20 @@
 	border-radius: var(--vscode-cornerRadius-large, 8px);
 }
 
+/* The editor card positions its footer strip. */
+.monaco-workbench.floating-panels .part.editor > .content {
+	position: relative;
+}
+
+/* Footer strip reserved by `workbench.experimental.modernUILayout.editorFooterHeight` (EditorPart.doLayout). */
+.monaco-workbench .part.editor > .content > .editor-part-footer {
+	position: absolute;
+	left: 0;
+	right: 0;
+	bottom: 0;
+	overflow: hidden;
+}
+
 /*
  * Webviews are iframes that cannot be reparented, so they are mounted at the workbench
  * root and floated over their card via `OverlayLayoutElement` (see `overlayWebview.ts`).
@@ -217,7 +231,7 @@
 	 * horizontal padding, doubled. It is independent of the cluster perimeter so the icons
 	 * keep their inset whatever the gutter is. The card width and the item centering below
 	 * both derive from it, and `ActivitybarPart.floatingHorizontalGutter` reserves it. */
-	--modern-ui-activitybar-lane: var(--vscode-spacing-size80);
+	--modern-ui-activitybar-lane: var(--modern-ui-custom-activitybar-lane, var(--vscode-spacing-size80));
 	margin: var(--modern-ui-floating-card-inner-margin) var(--modern-ui-floating-card-inner-margin) var(--modern-ui-floating-card-margin);
 	width: calc(var(--activity-bar-width, 48px) + var(--modern-ui-activitybar-lane));
 	height: calc(100% - var(--modern-ui-floating-card-margin));
@@ -246,6 +260,31 @@
  * sides. Compact density keeps its cards joined edge to edge, so it is excluded. */
 .monaco-workbench.floating-panels:not(.modern-ui-compact).nosidebar .part.activitybar {
 	border-radius: var(--vscode-cornerRadius-large);
+}
+
+/* A detached rail (`workbench.experimental.modernUILayout.detachedActivityBar`) is its own
+ * card: every corner is rounded, and the primary side bar keeps its full border and radius and
+ * the leading gap that `getFloatingPaneCompositeHorizontalMargins` reserves for it. A right-hand
+ * rail supplies that gap itself (`ActivitybarPart.needsFloatingLeadingGap`). */
+.monaco-workbench.floating-panels.floating-activitybar-detached .part.activitybar {
+	border-radius: var(--vscode-cornerRadius-large);
+}
+
+.monaco-workbench.floating-panels.floating-activitybar-detached:not(.noactivitybar) .part.sidebar.left {
+	--modern-ui-floating-card-seam-left-color: initial;
+	margin-left: var(--modern-ui-floating-card-margin);
+	border-top-left-radius: var(--vscode-cornerRadius-large);
+	border-bottom-left-radius: var(--vscode-cornerRadius-large);
+}
+
+.monaco-workbench.floating-panels.floating-activitybar-detached:not(.noactivitybar) .part.sidebar.right {
+	--modern-ui-floating-card-seam-right-color: initial;
+	border-top-right-radius: var(--vscode-cornerRadius-large);
+	border-bottom-right-radius: var(--vscode-cornerRadius-large);
+}
+
+.monaco-workbench.floating-panels.floating-activitybar-detached .part.activitybar.right {
+	margin-left: var(--modern-ui-floating-card-margin);
 }
 
 /* A left-hand rail gets its gap for free from the leading margin of the card beside it. A

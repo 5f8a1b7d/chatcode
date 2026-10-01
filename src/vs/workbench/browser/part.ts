@@ -230,11 +230,16 @@ class PartLayout {
 		private layoutService: IWorkbenchLayoutService,
 	) { }
 
+	/** Title, header and footer height in Modern UI, from `LayoutSettings.MODERN_UI_LAYOUT` when set. */
+	private get modernUIAreaHeight(): number {
+		return this.layoutService.isModernUICompact() ? PartLayout.AREA_HEIGHT_MODERN_UI : this.layoutService.getModernUILayoutMetrics().partTitleHeight ?? PartLayout.AREA_HEIGHT_MODERN_UI;
+	}
+
 	layout(width: number, height: number): ILayoutContentResult {
 		// Title Size: Width (Fill), Height (Variable).
 		let titleSize: Dimension;
 		if (this.options.hasTitle) {
-			const titleHeight = this.layoutService.isFloatingPanelsEnabled() ? PartLayout.AREA_HEIGHT_MODERN_UI : PartLayout.TITLE_HEIGHT;
+			const titleHeight = this.layoutService.isFloatingPanelsEnabled() ? this.modernUIAreaHeight : PartLayout.TITLE_HEIGHT;
 			titleSize = new Dimension(width, Math.min(height, titleHeight));
 		} else {
 			titleSize = Dimension.None;
@@ -243,7 +248,7 @@ class PartLayout {
 		// Header Size: Width (Fill), Height (Variable)
 		let headerSize: Dimension;
 		if (this.headerVisible) {
-			const headerHeight = this.layoutService.isFloatingPanelsEnabled() ? PartLayout.AREA_HEIGHT_MODERN_UI : PartLayout.HEADER_HEIGHT;
+			const headerHeight = this.layoutService.isFloatingPanelsEnabled() ? this.modernUIAreaHeight : PartLayout.HEADER_HEIGHT;
 			headerSize = new Dimension(width, Math.min(height, headerHeight));
 		} else {
 			headerSize = Dimension.None;
@@ -252,7 +257,7 @@ class PartLayout {
 		// Footer Size: Width (Fill), Height (Variable)
 		let footerSize: Dimension;
 		if (this.footerVisible) {
-			const footerHeight = this.layoutService.isFloatingPanelsEnabled() ? PartLayout.AREA_HEIGHT_MODERN_UI : PartLayout.FOOTER_HEIGHT;
+			const footerHeight = this.layoutService.isFloatingPanelsEnabled() ? this.modernUIAreaHeight : PartLayout.FOOTER_HEIGHT;
 			footerSize = new Dimension(width, Math.min(height, footerHeight));
 		} else {
 			footerSize = Dimension.None;

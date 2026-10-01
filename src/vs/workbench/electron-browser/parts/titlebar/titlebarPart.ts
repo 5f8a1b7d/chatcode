@@ -39,7 +39,8 @@ export class NativeTitlebarPart extends BrowserTitlebarPart {
 			return super.minimumHeight;
 		}
 
-		return (this.isCommandCenterVisible ? DEFAULT_CUSTOM_TITLEBAR_HEIGHT : this.macTitlebarSize) / (this.preventZoom ? getZoomFactor(getWindow(this.element)) : 1);
+		const height = this.modernUITitleBarHeight ?? (this.isCommandCenterVisible ? DEFAULT_CUSTOM_TITLEBAR_HEIGHT : this.macTitlebarSize);
+		return height / (this.preventZoom ? getZoomFactor(getWindow(this.element)) : 1);
 	}
 	override get maximumHeight(): number { return this.minimumHeight; }
 

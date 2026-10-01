@@ -12,7 +12,7 @@ import { isWindows, isLinux, isMacintosh, isWeb, isIOS } from '../../base/common
 import { EditorInputCapabilities, GroupIdentifier, isResourceEditorInput, IUntypedEditorInput, pathsToEditors } from '../common/editor.js';
 import { SidebarPart } from './parts/sidebar/sidebarPart.js';
 import { PanelPart } from './parts/panel/panelPart.js';
-import { Position, Parts, PartOpensMaximizedOptions, IWorkbenchLayoutService, positionFromString, positionToString, partOpensMaximizedFromString, PanelAlignment, ActivityBarPosition, LayoutSettings, MULTI_WINDOW_PARTS, SINGLE_WINDOW_PARTS, ZenModeSettings, EditorTabsMode, EditorActionsLocation, shouldShowCustomTitleBar, isHorizontal, isMultiWindowPart, IPartVisibilityChangeEvent, isFloatingTopEdgeExposed, ModernUIDensity } from '../services/layout/browser/layoutService.js';
+import { Position, Parts, PartOpensMaximizedOptions, IWorkbenchLayoutService, positionFromString, positionToString, partOpensMaximizedFromString, PanelAlignment, ActivityBarPosition, LayoutSettings, MULTI_WINDOW_PARTS, SINGLE_WINDOW_PARTS, ZenModeSettings, EditorTabsMode, EditorActionsLocation, shouldShowCustomTitleBar, isHorizontal, isMultiWindowPart, IPartVisibilityChangeEvent, isFloatingTopEdgeExposed, ModernUIDensity, IModernUILayoutMetrics, resolveModernUILayoutMetrics } from '../services/layout/browser/layoutService.js';
 import { isTemporaryWorkspace, IWorkspaceContextService, WorkbenchState } from '../../platform/workspace/common/workspace.js';
 import { IStorageService, StorageScope, StorageTarget } from '../../platform/storage/common/storage.js';
 import { IConfigurationChangeEvent, IConfigurationService, isConfigured } from '../../platform/configuration/common/configuration.js';
@@ -111,6 +111,7 @@ enum LayoutClasses {
 	WINDOW_BORDER = 'border',
 	NO_SHADOWS = 'no-shadows',
 	FLOATING_PANELS = 'floating-panels',
+	FLOATING_ACTIVITYBAR_DETACHED = 'floating-activitybar-detached',
 	// Presentation class for the Modern UI Update experiment, owned/toggled at
 	// runtime by `ModernUIContribution`. It is *also* applied here at render
 	// time (see `getLayoutClasses`) to avoid a flash of unstyled workbench chrome.
@@ -456,6 +457,9 @@ export abstract class Layout extends Disposable implements IWorkbenchLayoutServi
 			// Modern UI Update (floating panels presentation)
 			if (e.affectsConfiguration(LayoutSettings.MODERN_UI) || e.affectsConfiguration(LayoutSettings.MODERN_UI_DENSITY)) {
 				this.updateFloatingPanels();
+			} else if (e.affectsConfiguration(LayoutSettings.MODERN_UI_LAYOUT)) {
+				this.updateFloatingPanels();
+				this.layout();
 			}
 
 			// Auxiliary Sidebar
@@ -640,6 +644,10 @@ export abstract class Layout extends Disposable implements IWorkbenchLayoutServi
 		return this.isFloatingPanelsEnabled() && this.configurationService.getValue<ModernUIDensity>(LayoutSettings.MODERN_UI_DENSITY) === ModernUIDensity.Compact;
 	}
 
+	getModernUILayoutMetrics(): IModernUILayoutMetrics {
+		return resolveModernUILayoutMetrics(this.configurationService.getValue(LayoutSettings.MODERN_UI_LAYOUT));
+	}
+
 	private updateFloatingPanels(): void {
 		// Floating panels is a main-window concept: only the main container hosts
 		// the side bars and bottom panel. Scope the class (and therefore the CSS
@@ -647,7 +655,30 @@ export abstract class Layout extends Disposable implements IWorkbenchLayoutServi
 		// not apply the matching content insets in code — are left untouched.
 		this.mainContainer.classList.toggle(LayoutClasses.FLOATING_PANELS, this.isFloatingPanelsEnabled());
 		this.mainContainer.classList.toggle(LayoutClasses.MODERN_UI_COMPACT, this.isModernUICompact());
+		this.applyModernUILayoutMetrics();
 		this.updateWindowBorder();
+	}
+
+	protected applyModernUILayoutMetrics(): void {
+		// Publish the configured geometry so the floating card CSS matches the insets the parts
+		// reserve in code. Compact density keeps its stylesheet values.
+		const metrics = this.getModernUILayoutMetrics();
+		const custom = this.isFloatingPanelsEnabled() && !this.isModernUICompact();
+		const style = this.mainContainer.style;
+		for (const [name, value] of [
+			['--modern-ui-floating-card-margin', `${metrics.cardGap}px`],
+			['--modern-ui-floating-card-outer-margin', `${metrics.cardGap}px`],
+			['--modern-ui-floating-card-statusbar-margin', `${metrics.cardGap}px`],
+			['--modern-ui-custom-activitybar-lane', `${metrics.activityBarLane}px`],
+			['--modern-ui-part-title-height', metrics.partTitleHeight === undefined ? undefined : `${metrics.partTitleHeight}px`],
+		] as const) {
+			if (custom && value !== undefined) {
+				style.setProperty(name, value);
+			} else {
+				style.removeProperty(name);
+			}
+		}
+		this.mainContainer.classList.toggle(LayoutClasses.FLOATING_ACTIVITYBAR_DETACHED, custom && metrics.detachedActivityBar);
 	}
 
 	private setSideBarPosition(position: Position): void {

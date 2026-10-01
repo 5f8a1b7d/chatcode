@@ -234,6 +234,10 @@ export class BrowserTitlebarPart extends Part implements ITitlebarPart {
 	get minimumHeight(): number {
 		const wcoEnabled = isWeb && isWCOEnabled();
 		let value = this.isCommandCenterVisible || wcoEnabled ? DEFAULT_CUSTOM_TITLEBAR_HEIGHT : 30;
+		const customHeight = this.modernUITitleBarHeight;
+		if (customHeight !== undefined) {
+			value = customHeight;
+		}
 		if (wcoEnabled) {
 			value = Math.max(value, getWCOTitlebarAreaRect(getWindow(this.element))?.height ?? 0);
 		}
@@ -242,6 +246,11 @@ export class BrowserTitlebarPart extends Part implements ITitlebarPart {
 	}
 
 	get maximumHeight(): number { return this.minimumHeight; }
+
+	/** The main window's title bar height from `LayoutSettings.MODERN_UI_LAYOUT`, if configured. */
+	protected get modernUITitleBarHeight(): number | undefined {
+		return !this.isAuxiliary && this.layoutService.isFloatingPanelsEnabled() ? this.layoutService.getModernUILayoutMetrics().titleBarHeight : undefined;
+	}
 
 	//#endregion
 
@@ -369,6 +378,10 @@ export class BrowserTitlebarPart extends Part implements ITitlebarPart {
 	protected onConfigurationChanged(event: IConfigurationChangeEvent): void {
 		if (event.affectsConfiguration(LayoutSettings.MODERN_UI)) {
 			this.updateStyles();
+		}
+
+		if (event.affectsConfiguration(LayoutSettings.MODERN_UI) || event.affectsConfiguration(LayoutSettings.MODERN_UI_LAYOUT)) {
+			this._onDidChange.fire(undefined); // the configured title bar height may apply now
 		}
 
 		// Custom menu bar (disabled if auxiliary)
