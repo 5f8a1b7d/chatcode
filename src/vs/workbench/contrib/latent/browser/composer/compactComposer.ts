@@ -99,7 +99,7 @@ function useComposerSnapshot(model: ComposerModel<ICompactComposerPluginActivati
 	return ReactRuntime.useSyncExternalStore(subscribe, model.getSnapshot, model.getSnapshot);
 }
 
-function CompactComposer({ model, requestNativeCompletions }: { readonly model: ComposerModel<ICompactComposerPluginActivationContext>; readonly requestNativeCompletions?: () => void }): React.ReactElement {
+function CompactComposer({ model, requestNativeCompletions }: { readonly model: ComposerModel<ICompactComposerPluginActivationContext>; readonly requestNativeCompletions?: (cursor: number) => void }): React.ReactElement {
 	const snapshot = useComposerSnapshot(model);
 	const textareaRef = ReactRuntime.useRef<HTMLTextAreaElement>(null);
 	const [cursor, setCursor] = ReactRuntime.useState(0);
@@ -137,6 +137,7 @@ function CompactComposer({ model, requestNativeCompletions }: { readonly model: 
 	};
 
 	const onKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
+		if (event.nativeEvent.isComposing) { return; }
 		if (suggestions.length && ['ArrowDown', 'ArrowUp', 'Enter', 'Tab', 'Escape'].includes(event.key)) {
 			event.preventDefault();
 			if (event.key === 'Escape') { setSuggestionsOpen(false); }
@@ -192,12 +193,14 @@ function CompactComposer({ model, requestNativeCompletions }: { readonly model: 
 			setCursor(event.currentTarget.selectionStart);
 			setSuggestionsOpen(true);
 			setSelectedSuggestion(0);
-			if (/(?:^|\s)@$/.test(event.currentTarget.value.slice(0, event.currentTarget.selectionStart))) {
-				requestNativeCompletions?.();
+			const beforeCursor = event.currentTarget.value.slice(0, event.currentTarget.selectionStart);
+			if (/(?:^|\s)[@/]$/.test(beforeCursor) || /(?:^|\s)#[^\s\d][^\s]*$/.test(beforeCursor)) {
+				requestNativeCompletions?.(event.currentTarget.selectionStart);
 			}
 		},
+		onSelect: event => setCursor(event.currentTarget.selectionStart),
 		onKeyDown,
-		placeholder: localize('floatingComposer.placeholder', "Ask anything"),
+		placeholder: localize('floatingComposer.placeholder', "@ Actor · / Action · # Context"),
 		textareaRef,
 		rows: 1,
 		value: snapshot.draft.text,
@@ -207,7 +210,7 @@ function CompactComposer({ model, requestNativeCompletions }: { readonly model: 
 			key: item.id, type: 'button', role: 'option', 'aria-selected': index === selectedSuggestion,
 			onMouseDown: event => event.preventDefault(), onClick: () => chooseReference(item.number!),
 		}, formatAttachmentNumberName(item.number!, item.kind === 'context' ? item.label : basename(item.resource)))),
-		requestNativeCompletions ? ReactRuntime.createElement('button', { type: 'button', onClick: () => { setSuggestionsOpen(false); requestNativeCompletions(); } }, localize('floatingComposer.moreContext', "More Context…")) : null,
+		requestNativeCompletions ? ReactRuntime.createElement('button', { type: 'button', onClick: () => { setSuggestionsOpen(false); requestNativeCompletions(cursor); } }, localize('floatingComposer.moreContext', "More Context…")) : null,
 	) : null,
 	ReactRuntime.createElement('div', { className: 'flex items-center justify-between gap-2' },
 		ReactRuntime.createElement('div', { className: 'flex items-center gap-1' },
@@ -235,7 +238,7 @@ function CompactComposer({ model, requestNativeCompletions }: { readonly model: 
 }
 
 /** Mounts the React adapter and returns a VS Code lifecycle handle. */
-export async function renderCompactComposer(container: HTMLElement, model: ComposerModel<ICompactComposerPluginActivationContext>, requestNativeCompletions?: () => void): Promise<IDisposable> {
+export async function renderCompactComposer(container: HTMLElement, model: ComposerModel<ICompactComposerPluginActivationContext>, requestNativeCompletions?: (cursor: number) => void): Promise<IDisposable> {
 	const runtime = await loadReactRuntime();
 	ReactRuntime = runtime.React;
 	const root = runtime.createRoot(container);
