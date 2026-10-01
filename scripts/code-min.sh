@@ -91,6 +91,10 @@ done < <(
 const fs = require('fs');
 const path = require('path');
 const enabledExtensionIds = new Set([
+	// Grammar-only built-ins, so Python, LaTeX and Markdown files in the fixture are highlighted.
+	'vscode.python',
+	'vscode.latex',
+	'vscode.markdown',
 	'latentnote.latent-provider',
 	'latentnote.latent-selection',
 	'GitHub.copilot-chat',
