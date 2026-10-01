@@ -1,3 +1,4 @@
+import { IAuxiliarySurfaceRenderer, IAuxiliarySurfaceRequest, IAuxiliarySurfaceResponse, isAuxiliarySurfaceRenderer, isAuxiliarySurfaceResponse } from '../../auxiliarySurface/common/auxiliarySurface.js';
 /* eslint-disable header/header */
 import { Event } from '../../../base/common/event.js';
 import { IChannel, IServerChannel } from '../../../base/parts/ipc/common/ipc.js';
@@ -7,6 +8,7 @@ export class LatentFloatingWindowChannel implements IServerChannel {
 	constructor(private readonly service: ILatentFloatingWindowService) { }
 
 	listen<T>(_context: unknown, event: string): Event<T> {
+		if (event === 'onDidRequestRendererAction') { return this.service.onDidRequestRendererAction as Event<T>; }
 		switch (event) {
 			case 'onDidRequestNewThread': return this.service.onDidRequestNewThread as Event<T>;
 			case 'onDidToggleVoice': return this.service.onDidToggleVoice as Event<T>;
@@ -17,6 +19,12 @@ export class LatentFloatingWindowChannel implements IServerChannel {
 	call<T>(_context: unknown, command: string, argument?: unknown): Promise<T> {
 		const record = (typeof argument === 'object' && argument !== null ? argument : {}) as Record<string, unknown>;
 		switch (command) {
+			case 'setRenderer':
+				if (!Number.isInteger(record.windowId) || !isAuxiliarySurfaceRenderer(record.renderer)) { throw new Error('Invalid auxiliary renderer'); }
+				return this.service.setRenderer(record.windowId as number, record.renderer) as Promise<T>;
+			case 'resolveRendererAction':
+				if (!Number.isInteger(record.windowId) || typeof record.requestId !== 'string' || !isAuxiliarySurfaceResponse(record.response)) { throw new Error('Invalid auxiliary response'); }
+				return this.service.resolveRendererAction(record.windowId as number, record.requestId, record.response) as Promise<T>;
 			case 'isEnabled':
 				return this.service.isEnabled() as Promise<T>;
 			case 'setEnabled':
@@ -36,10 +44,15 @@ export class LatentFloatingWindowChannel implements IServerChannel {
 
 export class LatentFloatingWindowChannelClient implements ILatentFloatingWindowService {
 	declare readonly _serviceBrand: undefined;
+	readonly onDidRequestRendererAction: Event<IAuxiliarySurfaceRequest>;
+	setRenderer(windowId: number, renderer: IAuxiliarySurfaceRenderer): Promise<void> { return this.channel.call('setRenderer', { windowId, renderer }); }
+	resolveRendererAction(windowId: number, requestId: string, response: IAuxiliarySurfaceResponse): Promise<void> { return this.channel.call('resolveRendererAction', { windowId, requestId, response }); }
+
 	readonly onDidRequestNewThread: Event<IFloatingNewThreadEvent>;
 	readonly onDidToggleVoice: Event<IFloatingVoiceEvent>;
 
 	constructor(private readonly channel: IChannel) {
+		this.onDidRequestRendererAction = channel.listen<IAuxiliarySurfaceRequest>('onDidRequestRendererAction');
 		this.onDidRequestNewThread = channel.listen<IFloatingNewThreadEvent>('onDidRequestNewThread');
 		this.onDidToggleVoice = channel.listen<IFloatingVoiceEvent>('onDidToggleVoice');
 	}

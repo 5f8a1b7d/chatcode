@@ -1,3 +1,6 @@
+import { FileAccess } from '../../../base/common/network.js';
+import { AuxiliarySurface } from '../../auxiliarySurface/electron-main/auxiliarySurface.js';
+import { IAuxiliarySurfaceRenderer, IAuxiliarySurfaceResponse } from '../../auxiliarySurface/common/auxiliarySurface.js';
 /* eslint-disable header/header */
 import { BrowserWindow, screen, systemPreferences } from 'electron';
 import { randomUUID } from 'crypto';
@@ -62,6 +65,21 @@ interface OverlayState {
  */
 export class LatentSelectionMainService extends Disposable implements ILatentSelectionService {
 	declare readonly _serviceBrand: undefined;
+	private readonly surface = this._register(new AuxiliarySurface());
+	readonly onDidRequestRendererAction = this.surface.onDidRequestRendererAction;
+	async setRenderer(_windowId: number, renderer: IAuxiliarySurfaceRenderer): Promise<void> {
+		if (this.surface.renderer?.html === renderer.html) { return; }
+		this.surface.configure(renderer);
+		if (this.overlay && !this.overlay.isDestroyed()) {
+			this.overlayReady = false;
+			this.overlay.setMinimumSize(100, 40);
+			this.overlay.setMaximumSize(1200, 1000);
+			this.overlay.setSize(renderer.width, renderer.height);
+			await this.overlay.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(renderer.html)}`);
+		}
+	}
+	resolveRendererAction(windowId: number, requestId: string, response: IAuxiliarySurfaceResponse): Promise<void> { return this.surface.resolve(this.overlay, windowId, requestId, response); }
+
 
 	private readonly _onDidRequestAction = this._register(new Emitter<ISelectionActionEvent>());
 	readonly onDidRequestAction = this._onDidRequestAction.event;
@@ -309,10 +327,11 @@ export class LatentSelectionMainService extends Disposable implements ILatentSel
 		}
 		this.overlayReady = false;
 		const overlay = this.overlay = new BrowserWindow({
-			width: OVERLAY_WIDTH,
-			height: TOOLBAR_HEIGHT,
+			width: this.surface.renderer?.width ?? OVERLAY_WIDTH,
+			height: this.surface.renderer?.height ?? TOOLBAR_HEIGHT,
 			show: false,
 			frame: false,
+			acceptFirstMouse: true,
 			transparent: true,
 			resizable: false,
 			movable: true,
@@ -322,14 +341,19 @@ export class LatentSelectionMainService extends Disposable implements ILatentSel
 			skipTaskbar: true,
 			focusable: true,
 			hasShadow: true,
-			webPreferences: { nodeIntegration: false, contextIsolation: true, sandbox: true },
+			webPreferences: { nodeIntegration: false, contextIsolation: true, sandbox: true, preload: FileAccess.asFileUri('vs/base/parts/sandbox/electron-browser/preload-surface.js').fsPath },
 		});
 		overlay.setAlwaysOnTop(true, 'screen-saver');
 		overlay.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+		overlay.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
 		overlay.webContents.on('will-navigate', (event, url) => {
-			if (this.handleOverlayNavigation(url)) {
-				event.preventDefault();
-			}
+			event.preventDefault();
+			if (this.surface.handleNavigation(url, overlay, this.targetWindowId)) { return; }
+			this.handleOverlayNavigation(url);
+		});
+		overlay.webContents.on('ipc-message', (event, channel, message) => {
+			if (channel !== 'vscode:auxiliarySurface' || event.senderFrame !== overlay.webContents.mainFrame || typeof message !== 'string' || message.length > 500_000 || !this.surface.renderer) { return; }
+			if (!this.surface.handleNavigation(message, overlay, this.targetWindowId)) { this.handleOverlayNavigation(message); }
 		});
 		overlay.webContents.on('did-finish-load', () => {
 			this.overlayReady = true;
@@ -337,12 +361,13 @@ export class LatentSelectionMainService extends Disposable implements ILatentSel
 		});
 		overlay.on('blur', () => { if (!this.pinned) { this.hideOverlay(); } });
 		overlay.on('closed', () => {
+			this.surface.reset();
 			if (this.overlay === overlay) {
 				this.overlay = undefined;
 				this.overlayReady = false;
 			}
 		});
-		void overlay.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(createOverlayHtml())}`);
+		void overlay.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(this.surface.renderer?.html ?? createOverlayHtml())}`);
 		return overlay;
 	}
 
@@ -409,22 +434,24 @@ export class LatentSelectionMainService extends Disposable implements ILatentSel
 		if (!this.overlay || this.overlay.isDestroyed() || !this.overlayAnchor) {
 			return;
 		}
+		if (this.surface.renderer) { height = reposition ? this.surface.renderer.height : this.overlay.getBounds().height; }
+		const width = this.surface.renderer?.width ?? OVERLAY_WIDTH;
 		const current = this.overlay.getBounds();
 		if (!reposition && this.overlay.isVisible()) {
 			// Keep the user's dragged position; only grow or shrink in place (P2-FR-012).
 			const display = screen.getDisplayNearestPoint({ x: current.x, y: current.y });
 			const y = Math.min(current.y, display.workArea.y + display.workArea.height - height - WINDOW_MARGIN);
-			this.overlay.setBounds({ x: current.x, y: Math.max(display.workArea.y + WINDOW_MARGIN, y), width: OVERLAY_WIDTH, height }, false);
+			this.overlay.setBounds({ x: current.x, y: Math.max(display.workArea.y + WINDOW_MARGIN, y), width, height }, false);
 			return;
 		}
 		const display = screen.getDisplayNearestPoint(this.overlayAnchor);
 		const workArea = display.workArea;
-		const x = clamp(this.overlayAnchor.x, workArea.x + WINDOW_MARGIN, workArea.x + workArea.width - OVERLAY_WIDTH - WINDOW_MARGIN);
+		const x = clamp(this.overlayAnchor.x, workArea.x + WINDOW_MARGIN, workArea.x + workArea.width - width - WINDOW_MARGIN);
 		const below = this.overlayAnchor.y + 12;
 		const y = below + height <= workArea.y + workArea.height - WINDOW_MARGIN
 			? below
 			: Math.max(workArea.y + WINDOW_MARGIN, this.overlayAnchor.y - height - 12);
-		this.overlay.setBounds({ x: Math.round(x), y: Math.round(y), width: OVERLAY_WIDTH, height }, false);
+		this.overlay.setBounds({ x: Math.round(x), y: Math.round(y), width, height }, false);
 	}
 
 	private async renderOverlay(): Promise<void> {

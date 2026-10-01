@@ -1,3 +1,4 @@
+import { IAuxiliarySurfaceService } from '../../auxiliarySurface/common/auxiliarySurface.js';
 /* eslint-disable header/header */
 import { Event } from '../../../base/common/event.js';
 import { createDecorator } from '../../instantiation/common/instantiation.js';
@@ -56,7 +57,7 @@ export interface ISelectionOverlayUpdate {
 
 export const ILatentSelectionService = createDecorator<ILatentSelectionService>('latentSelectionService');
 
-export interface ILatentSelectionService {
+export interface ILatentSelectionService extends IAuxiliarySurfaceService {
 	readonly _serviceBrand: undefined;
 	readonly onDidRequestAction: Event<ISelectionActionEvent>;
 

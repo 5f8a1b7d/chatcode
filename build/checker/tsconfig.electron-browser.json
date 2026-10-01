@@ -15,6 +15,7 @@
 	"exclude": [
 		"../../src/**/test/**",
 		"../../src/**/fixtures/**",
+		"../../src/vs/base/parts/sandbox/electron-browser/preload-surface.ts",
 		"../../src/vs/base/parts/sandbox/electron-browser/preload.ts", 		// Preload scripts for Electron sandbox
 		"../../src/vs/base/parts/sandbox/electron-browser/preload-aux.ts",	// have limited access to node.js APIs
 		"../../src/vs/platform/browserView/electron-browser/preload-browserView.ts"	// Browser view preload script

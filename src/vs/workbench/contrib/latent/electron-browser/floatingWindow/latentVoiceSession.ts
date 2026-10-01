@@ -41,6 +41,9 @@ export class LatentVoiceSession extends Disposable {
 	private assistantText = '';
 	private stopping: Promise<void> | undefined;
 	private _state: VoiceSessionState = 'connecting';
+	private _muted = false;
+	get muted(): boolean { return this._muted; }
+	setMuted(muted: boolean): void { this._muted = muted; for (const track of this.stream?.getAudioTracks() ?? []) { track.enabled = !muted; } }
 
 	get state(): VoiceSessionState {
 		return this._state;
@@ -86,7 +89,7 @@ export class LatentVoiceSession extends Disposable {
 			});
 		});
 		this.processor.onaudioprocess = event => {
-			if (this.socket?.readyState !== 1) {
+			if (this._muted || this.socket?.readyState !== 1) {
 				return;
 			}
 			const input = event.inputBuffer.getChannelData(0);
