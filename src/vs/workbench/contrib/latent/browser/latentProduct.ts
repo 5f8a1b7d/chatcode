@@ -7,6 +7,9 @@ import { IContextKeyService, RawContextKey } from '../../../../platform/contextk
 import { ServicesAccessor } from '../../../../platform/instantiation/common/instantiation.js';
 import { ILogService } from '../../../../platform/log/common/log.js';
 import { IProductService } from '../../../../platform/product/common/productService.js';
+import product from '../../../../platform/product/common/product.js';
+import { Extensions as ConfigurationExtensions, IConfigurationRegistry } from '../../../../platform/configuration/common/configurationRegistry.js';
+import { Registry } from '../../../../platform/registry/common/platform.js';
 import { IWorkbenchContribution } from '../../../common/contributions.js';
 
 /**
@@ -22,6 +25,12 @@ export interface ILatentDerivativeProductConfiguration {
 	readonly defaultComposerAgentId?: string;
 	/** Base URL of the derivative's server; consumed by the derivative's own extensions. */
 	readonly serverUrl?: string;
+	/**
+	 * Default setting values of the derivative. Registered when this module loads, before any
+	 * workbench part reads configuration, so they apply from the first frame (a derivative's
+	 * overlay loads later and cannot).
+	 */
+	readonly configurationDefaults?: Readonly<Record<string, unknown>>;
 	readonly [key: string]: unknown;
 }
 
@@ -37,6 +46,11 @@ export function isLatentCopilotEnabled(productService: IProductService): boolean
 export const LatentDerivativeBuildContext = new RawContextKey<boolean>('latent.derivativeBuild', false, localize('latent.derivativeBuild', "Whether this is a derivative build with product overrides."));
 export const LatentCopilotEnabledContext = new RawContextKey<boolean>('latent.copilotEnabled', true, localize('latent.copilotEnabled', "Whether Copilot integrations are enabled in this product."));
 export const LatentProviderConfigurationHiddenContext = new RawContextKey<boolean>('latent.providerConfigurationHidden', false, localize('latent.providerConfigurationHidden', "Whether local model configuration is hidden by the product."));
+
+const derivativeConfigurationDefaults = (product as { latentPrivate?: ILatentDerivativeProductConfiguration }).latentPrivate?.configurationDefaults;
+if (derivativeConfigurationDefaults && typeof derivativeConfigurationDefaults === 'object') {
+	Registry.as<IConfigurationRegistry>(ConfigurationExtensions.Configuration).registerDefaultConfigurations([{ overrides: { ...derivativeConfigurationDefaults } }]);
+}
 
 /** Module path of the optional workbench overlay a derivative build places next to the fork folders. */
 const derivativeOverlayModule = 'vs/workbench/contrib/latentPrivate/latentPrivate.contribution.js';
