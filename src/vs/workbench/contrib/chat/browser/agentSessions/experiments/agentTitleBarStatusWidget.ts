@@ -174,8 +174,15 @@ export class AgentTitleBarStatusWidget extends BaseActionViewItem {
 		@IChatEntitlementService private readonly chatEntitlementService: IChatEntitlementService,
 		@IChatWidgetService private readonly chatWidgetService: IChatWidgetService,
 		@ITelemetryService private readonly telemetryService: ITelemetryService,
+		@IActionViewItemService private readonly actionViewItemService: IActionViewItemService,
 	) {
 		super(undefined, action, options);
+		this._register(this.actionViewItemService.onDidChange(menu => {
+			if (menu === MenuId.CommandCenterCenter) {
+				this._lastRenderState = undefined;
+				this._render();
+			}
+		}));
 
 		// Create menu for CommandCenterCenter to get items like debug toolbar
 		this._commandCenterMenu = this._register(this.menuService.createMenu(MenuId.CommandCenterCenter, this.contextKeyService));
@@ -365,6 +372,13 @@ export class AgentTitleBarStatusWidget extends BaseActionViewItem {
 			}
 			this._lastRenderState = stateKey;
 
+			// A registered search provider can contain an editable input. Session or
+			// window-title updates must not interrupt typing when rebuilding the bar.
+			const activeElement = this._container.ownerDocument.activeElement;
+			const focusedInput = activeElement?.tagName === 'INPUT' && this._container.contains(activeElement)
+				? activeElement as HTMLInputElement : undefined;
+			const selection = focusedInput ? { start: focusedInput.selectionStart, end: focusedInput.selectionEnd } : undefined;
+
 			// Clear existing content
 			reset(this._container);
 
@@ -389,6 +403,15 @@ export class AgentTitleBarStatusWidget extends BaseActionViewItem {
 
 			// Setup roving tabindex for keyboard navigation
 			this._setupRovingTabIndex(this._dynamicDisposables);
+			if (selection) {
+				const replacement = this._container.querySelector<HTMLInputElement>('input[type="text"], input[type="search"]');
+				if (replacement) {
+					replacement.focus({ preventScroll: true });
+					if (selection.start !== null && selection.end !== null) {
+						replacement.setSelectionRange(selection.start, selection.end);
+					}
+				}
+			}
 		} finally {
 			this._isRendering = false;
 		}
@@ -539,80 +562,77 @@ export class AgentTitleBarStatusWidget extends BaseActionViewItem {
 		this._rovingElements.push(inputArea);
 		pill.appendChild(inputArea);
 
-		// Label - always shows workspace name in compact mode
-		const label = $('span.agent-status-label');
-		const { progress: progressText } = this._getSessionNeedingAttention(attentionNeededSessions);
-		const defaultLabel = isCompactMode ? this._getLabel() : (progressText ?? this._getLabel());
-
-		if (!isCompactMode && progressText) {
-			label.classList.add('has-progress');
-		}
-
-		const hoverLabel = localize('askAnythingPlaceholder', "Ask anything or describe what to build");
-
-		label.textContent = defaultLabel;
-		inputArea.appendChild(label);
-
-		if (isCompactMode) {
-			// Compact mode: hover resets icon state but keeps workspace name
-			disposables.add(addDisposableListener(inputArea, EventType.MOUSE_ENTER, () => {
-				reset(leftIcon, renderIcon(Codicon.searchSparkle));
-				leftIcon.classList.remove('has-attention');
-				label.classList.remove('has-progress');
-			}));
-
-			disposables.add(addDisposableListener(inputArea, EventType.MOUSE_LEAVE, () => {
-				reset(leftIcon, renderIcon(Codicon.searchSparkle));
-			}));
+		// Allow the command center's registered search view to render in compact mode too.
+		const searchAction = toAction({ id: QUICK_OPEN_ACTION_ID, label: localize('openQuickAccess', "Open Quick Access"), run: () => this.commandService.executeCommand(QUICK_OPEN_ACTION_ID) });
+		const customSearch = this.actionViewItemService.lookUp(MenuId.CommandCenterCenter, QUICK_OPEN_ACTION_ID)?.(searchAction, {}, this.instantiationService, getWindow(inputArea).vscodeWindowId);
+		if (customSearch) {
+			inputArea.removeAttribute('role');
+			inputArea.removeAttribute('aria-label');
+			inputArea.tabIndex = -1;
+			disposables.add(customSearch);
+			customSearch.render(inputArea);
 		} else {
-			// Send icon (hidden by default, shown on hover - only when not showing attention message)
-			const sendIcon = $('span.agent-status-send');
-			reset(sendIcon, renderIcon(Codicon.send));
-			sendIcon.classList.add('hidden');
-			inputArea.appendChild(sendIcon);
+			// Label - always shows workspace name in compact mode
+			const label = $('span.agent-status-label');
+			const { progress: progressText } = this._getSessionNeedingAttention(attentionNeededSessions);
+			const defaultLabel = isCompactMode ? this._getLabel() : (progressText ?? this._getLabel());
 
-			// Hover behavior - swap icon and label (only when showing default state).
-			if (!progressText) {
+			if (!isCompactMode && progressText) {
+				label.classList.add('has-progress');
+			}
+
+			const hoverLabel = localize('askAnythingPlaceholder', "Ask anything or describe what to build");
+
+			label.textContent = defaultLabel;
+			inputArea.appendChild(label);
+
+			if (isCompactMode) {
+				// Compact mode: hover resets icon state but keeps workspace name
 				disposables.add(addDisposableListener(inputArea, EventType.MOUSE_ENTER, () => {
 					reset(leftIcon, renderIcon(Codicon.searchSparkle));
 					leftIcon.classList.remove('has-attention');
-					label.textContent = hoverLabel;
 					label.classList.remove('has-progress');
-					sendIcon.classList.remove('hidden');
 				}));
 
 				disposables.add(addDisposableListener(inputArea, EventType.MOUSE_LEAVE, () => {
 					reset(leftIcon, renderIcon(Codicon.searchSparkle));
-					label.textContent = defaultLabel;
-					sendIcon.classList.add('hidden');
 				}));
+			} else {
+				// Send icon (hidden by default, shown on hover - only when not showing attention message)
+				const sendIcon = $('span.agent-status-send');
+				reset(sendIcon, renderIcon(Codicon.send));
+				sendIcon.classList.add('hidden');
+				inputArea.appendChild(sendIcon);
+
+				// Hover behavior - swap icon and label (only when showing default state).
+				if (!progressText) {
+					disposables.add(addDisposableListener(inputArea, EventType.MOUSE_ENTER, () => {
+						reset(leftIcon, renderIcon(Codicon.searchSparkle));
+						leftIcon.classList.remove('has-attention');
+						label.textContent = hoverLabel;
+						label.classList.remove('has-progress');
+						sendIcon.classList.remove('hidden');
+					}));
+
+					disposables.add(addDisposableListener(inputArea, EventType.MOUSE_LEAVE, () => {
+						reset(leftIcon, renderIcon(Codicon.searchSparkle));
+						label.textContent = defaultLabel;
+						sendIcon.classList.add('hidden');
+					}));
+				}
 			}
-		}
 
-		// Setup hover tooltip on input area
-		const hoverDelegate = getDefaultHoverDelegate('mouse');
-		disposables.add(this.hoverService.setupManagedHover(hoverDelegate, inputArea, () => {
-			const kbForTooltip = this.keybindingService.lookupKeybinding(UNIFIED_QUICK_ACCESS_ACTION_ID)?.getLabel();
-			return kbForTooltip
-				? localize('askTooltip', "Open Quick Access ({0})", kbForTooltip)
-				: localize('askTooltip2', "Open Quick Access");
-		}));
+			// Setup hover tooltip on input area
+			const hoverDelegate = getDefaultHoverDelegate('mouse');
+			disposables.add(this.hoverService.setupManagedHover(hoverDelegate, inputArea, () => {
+				const kbForTooltip = this.keybindingService.lookupKeybinding(UNIFIED_QUICK_ACCESS_ACTION_ID)?.getLabel();
+				return kbForTooltip
+					? localize('askTooltip', "Open Quick Access ({0})", kbForTooltip)
+					: localize('askTooltip2', "Open Quick Access");
+			}));
 
-		// Click handler - always open quick access in compact mode (attention sessions are handled by the badge)
-		disposables.add(addDisposableListener(inputArea, EventType.CLICK, (e) => {
-			e.preventDefault();
-			e.stopPropagation();
-			this.telemetryService.publicLog2<AgentStatusClickEvent, AgentStatusClickClassification>('agentStatusWidget.click', {
-				source: 'pill',
-				action: 'quickAccess',
-			});
-			const useUnifiedQuickAccess = this.configurationService.getValue<boolean>(ChatConfiguration.UnifiedAgentsBar) === true;
-			this.commandService.executeCommand(useUnifiedQuickAccess ? UNIFIED_QUICK_ACCESS_ACTION_ID : QUICK_OPEN_ACTION_ID);
-		}));
-
-		// Keyboard handler
-		disposables.add(addDisposableListener(inputArea, EventType.KEY_DOWN, (e) => {
-			if (e.key === 'Enter' || e.key === ' ') {
+			// Click handler - always open quick access in compact mode (attention sessions are handled by the badge)
+			disposables.add(addDisposableListener(inputArea, EventType.CLICK, (e) => {
 				e.preventDefault();
 				e.stopPropagation();
 				this.telemetryService.publicLog2<AgentStatusClickEvent, AgentStatusClickClassification>('agentStatusWidget.click', {
@@ -621,8 +641,22 @@ export class AgentTitleBarStatusWidget extends BaseActionViewItem {
 				});
 				const useUnifiedQuickAccess = this.configurationService.getValue<boolean>(ChatConfiguration.UnifiedAgentsBar) === true;
 				this.commandService.executeCommand(useUnifiedQuickAccess ? UNIFIED_QUICK_ACCESS_ACTION_ID : QUICK_OPEN_ACTION_ID);
-			}
-		}));
+			}));
+
+			// Keyboard handler
+			disposables.add(addDisposableListener(inputArea, EventType.KEY_DOWN, (e) => {
+				if (e.key === 'Enter' || e.key === ' ') {
+					e.preventDefault();
+					e.stopPropagation();
+					this.telemetryService.publicLog2<AgentStatusClickEvent, AgentStatusClickClassification>('agentStatusWidget.click', {
+						source: 'pill',
+						action: 'quickAccess',
+					});
+					const useUnifiedQuickAccess = this.configurationService.getValue<boolean>(ChatConfiguration.UnifiedAgentsBar) === true;
+					this.commandService.executeCommand(useUnifiedQuickAccess ? UNIFIED_QUICK_ACCESS_ACTION_ID : QUICK_OPEN_ACTION_ID);
+				}
+			}));
+		}
 
 		// In compact mode, render status badge inline within the pill
 		this._renderStatusBadge(disposables, activeSessions, unreadSessions, attentionNeededSessions, pill);

@@ -147,7 +147,7 @@ export class ModernUIContribution extends Disposable implements IWorkbenchContri
 		// A config change re-applies to every container (the global `update()`
 		// covers all windows, including auxiliary ones).
 		this._register(this.configurationService.onDidChangeConfiguration(e => {
-			if (e.affectsConfiguration(LayoutSettings.MODERN_UI) || e.affectsConfiguration(LayoutSettings.MODERN_UI_DENSITY) || e.affectsConfiguration(LayoutSettings.MODERN_UI_UPPERCASE_VIEW_HEADERS) || e.affectsConfiguration(LayoutSettings.MODERN_UI_EDITOR_TAB_STYLE)) {
+			if (e.affectsConfiguration(LayoutSettings.MODERN_UI) || e.affectsConfiguration(LayoutSettings.MODERN_UI_DENSITY) || e.affectsConfiguration(LayoutSettings.MODERN_UI_UPPERCASE_VIEW_HEADERS) || e.affectsConfiguration(LayoutSettings.MODERN_UI_EDITOR_TAB_STYLE) || e.affectsConfiguration(LayoutSettings.MODERN_UI_LAYOUT)) {
 				this.update();
 				// Some modules change layout metrics, so a relayout is required once
 				// their classes and corresponding layout values are updated.
@@ -199,7 +199,7 @@ export class ModernUIContribution extends Disposable implements IWorkbenchContri
 			return 'disabled';
 		}
 
-		return `${this.isCompact() ? ModernUIDensity.Compact : ModernUIDensity.Default}/${this.useConnectedEditorTabs() ? ModernUIEditorTabStyle.Connected : ModernUIEditorTabStyle.Pill}`;
+		return `${this.isCompact() ? ModernUIDensity.Compact : ModernUIDensity.Default}/${this.useConnectedEditorTabs() ? ModernUIEditorTabStyle.Connected : ModernUIEditorTabStyle.Pill}/${this.layoutService.getModernUILayoutMetrics().paneHeaderHeight ?? ''}`;
 	}
 
 	private update(): void {
@@ -234,7 +234,7 @@ export class ModernUIContribution extends Disposable implements IWorkbenchContri
 	private applyPaneHeaderSize(enabled: boolean): void {
 		let paneHeaderSize = DEFAULT_PANE_HEADER_SIZE;
 		if (enabled) {
-			paneHeaderSize = MODERN_UI_PANE_HEADER_SIZE;
+			paneHeaderSize = (!this.isCompact() && this.layoutService.getModernUILayoutMetrics().paneHeaderHeight) || MODERN_UI_PANE_HEADER_SIZE;
 		}
 		setGlobalPaneHeaderSize(paneHeaderSize);
 	}

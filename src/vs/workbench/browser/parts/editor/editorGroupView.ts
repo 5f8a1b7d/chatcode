@@ -835,6 +835,8 @@ export class EditorGroupView extends Themable implements IEditorGroupView {
 		if (
 			event.oldPartOptions.showTabs !== event.newPartOptions.showTabs ||
 			event.oldPartOptions.tabHeight !== event.newPartOptions.tabHeight ||
+			event.oldPartOptions.modernTabsHeight !== event.newPartOptions.modernTabsHeight ||
+			event.oldPartOptions.breadcrumbsHeight !== event.newPartOptions.breadcrumbsHeight ||
 			(event.oldPartOptions.showTabs === 'multiple' && event.oldPartOptions.pinnedTabsOnSeparateRow !== event.newPartOptions.pinnedTabsOnSeparateRow)
 		) {
 

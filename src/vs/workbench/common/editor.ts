@@ -1327,6 +1327,10 @@ interface IEditorPartConfiguration {
 export interface IEditorPartOptions extends DeepRequiredNonNullable<IEditorPartConfiguration> {
 	hasIcons: boolean;
 	showBreadcrumbs?: boolean;
+	/** Breadcrumbs bar height from the Modern UI layout, when configured. */
+	breadcrumbsHeight?: number;
+	/** Multi-tab title row height from the Modern UI layout, when configured. */
+	modernTabsHeight?: number;
 }
 
 export interface IEditorPartOptionsChangeEvent {

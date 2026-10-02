@@ -674,6 +674,47 @@ suite('ChatRequestParser', () => {
 		await assertSnapshot(result);
 	});
 
+	test('actor, action, resource and instruction remain independent', () => {
+		const agents = instantiationService.get(IChatAgentService);
+		testDisposables.add(agents.registerAgent('agent', getAgentWithSlashCommands([{ name: 'review', description: '' }])));
+		const text = '@agent /review #auth.ts check concurrency';
+		parser = instantiationService.createInstance(ChatRequestParser);
+		const result = parser.parseChatRequestWithReferences([{
+			id: 'auth', isFile: true, data: URI.file('/src/auth.ts'), range: new Range(1, 16, 1, 24),
+		}], ToolAndToolSetEnablementMap.fromEntries([]), text);
+		assert.deepStrictEqual(result.parts.filter(part => part.kind !== 'text').map(part => ({ kind: part.kind, text: part.text })), [
+			{ kind: 'agent', text: '@agent' }, { kind: 'subcommand', text: '/review' }, { kind: 'dynamic', text: '#auth.ts' },
+		]);
+	});
+
+	test('at addresses enabled capabilities while hash never enables a tool', () => {
+		parser = instantiationService.createInstance(ChatRequestParser);
+		const tools = ToolAndToolSetEnablementMap.fromEntries([
+			[{ id: 'terminal', toolReferenceName: 'terminal', displayName: 'Terminal', modelDescription: '', source: ToolDataSource.Internal }, true],
+			[{ id: 'disabled', toolReferenceName: 'disabled', displayName: 'Disabled', modelDescription: '', source: ToolDataSource.Internal }, false],
+		]);
+		const result = parser.parseChatRequestWithReferences([], tools, 'Use @terminal with #terminal @disabled @unknown email@terminal');
+		assert.deepStrictEqual(result.parts.filter(part => part.kind !== 'text').map(part => ({ kind: part.kind, text: part.text })), [
+			{ kind: 'tool', text: '@terminal' },
+		]);
+	});
+
+	test('capability actor can precede an action and a same-named context', () => {
+		const commands = mockObject<IChatSlashCommandService>()({ _serviceBrand: undefined });
+		commands.getCommands.returns([{ command: 'review' }]);
+		instantiationService.stub(IChatSlashCommandService, commands);
+		parser = instantiationService.createInstance(ChatRequestParser);
+		const tools = ToolAndToolSetEnablementMap.fromEntries([
+			[{ id: 'terminal', toolReferenceName: 'terminal', displayName: 'Terminal', modelDescription: '', source: ToolDataSource.Internal }, true],
+		]);
+		const result = parser.parseChatRequestWithReferences([{
+			id: 'output', data: 'Terminal output', range: new Range(1, 19, 1, 28),
+		}], tools, '@terminal /review #terminal explain');
+		assert.deepStrictEqual(result.parts.filter(part => part.kind !== 'text').map(part => ({ kind: part.kind, text: part.text })), [
+			{ kind: 'tool', text: '@terminal' }, { kind: 'slash', text: '/review' }, { kind: 'dynamic', text: '#terminal' },
+		]);
+	});
+
 	test('agents and tools and multiline', async () => {
 		const agentsService = mockObject<IChatAgentService>()({ _serviceBrand: undefined, hasToolsAgent: false, onDidChangeAgents: Event.None });
 		agentsService.getAgentsByName.returns([getAgentWithSlashCommands([{ name: 'subCommand', description: '' }])]);
@@ -685,7 +726,7 @@ suite('ChatRequestParser', () => {
 		] satisfies [IToolData | ToolSet, boolean][]));
 
 		parser = instantiationService.createInstance(ChatRequestParser);
-		const result = parser.parseChatRequest(testSessionUri, '@agent /subCommand \nPlease do with #selection\nand #debugConsole');
+		const result = parser.parseChatRequest(testSessionUri, '@agent /subCommand \nPlease do with @selection\nand @debugConsole');
 		await assertSnapshot(result);
 	});
 
@@ -700,7 +741,7 @@ suite('ChatRequestParser', () => {
 		] satisfies [IToolData | ToolSet, boolean][]));
 
 		parser = instantiationService.createInstance(ChatRequestParser);
-		const result = parser.parseChatRequest(testSessionUri, '@agent Please \ndo /subCommand with #selection\nand #debugConsole');
+		const result = parser.parseChatRequest(testSessionUri, '@agent Please \ndo /subCommand with @selection\nand @debugConsole');
 		await assertSnapshot(result);
 	});
 

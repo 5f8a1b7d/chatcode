@@ -76,7 +76,7 @@ const languageModelToolsExtensionPoint = extensionsRegistry.ExtensionsRegistry.r
 					pattern: '^(?!copilot_|vscode_)[\\w-]+$'
 				},
 				toolReferenceName: {
-					markdownDescription: localize('toolName2', "If {0} is enabled for this tool, the user may use '#' with this name to invoke the tool in a query. Otherwise, the name is not required. Name must not contain whitespace.", '`canBeReferencedInPrompt`'),
+					markdownDescription: localize('toolName2', "If {0} is enabled for this tool, the user may use '@' with this name to invoke the tool in a query. Otherwise, the name is not required. Name must not contain whitespace.", '`canBeReferencedInPrompt`'),
 					type: 'string',
 					pattern: '^[\\w-]+$'
 				},
@@ -529,7 +529,7 @@ class LanguageModelToolSetDataRenderer extends Disposable implements IExtensionF
 		const rows: IRowData[][] = contribs.map(t => {
 			return [
 				new MarkdownString(`\`${t.name}\``),
-				t.referenceName ? new MarkdownString(`\`#${t.referenceName}\``) : 'none',
+				t.referenceName ? new MarkdownString(`\`@${t.referenceName}\``) : 'none',
 				t.tools.join(', '),
 				t.description,
 			];

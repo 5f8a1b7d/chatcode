@@ -147,11 +147,11 @@ export class FloatingComposerHost extends Disposable {
 		const renderer = this._register(new MutableDisposable<IDisposable>());
 		let disposed = false;
 		this._register(toDisposable(() => disposed = true));
-		void renderCompactComposer(this._collapsed, model, () => {
+		void renderCompactComposer(this._collapsed, model, cursor => {
 			this.expand();
 			const editor = this._chatWidget.inputPart.inputEditor;
 			const inputModel = editor.getModel();
-			if (inputModel) { editor.setPosition(inputModel.getPositionAt(inputModel.getValueLength())); }
+			if (inputModel) { editor.setPosition(inputModel.getPositionAt(cursor)); }
 			editor.trigger('latent.context', 'editor.action.triggerSuggest', {});
 		}).then(disposable => {
 			if (disposed) {

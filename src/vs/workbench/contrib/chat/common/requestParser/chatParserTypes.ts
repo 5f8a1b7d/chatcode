@@ -105,7 +105,7 @@ export class ChatRequestToolPart implements IParsedChatRequestPart {
 	constructor(readonly range: OffsetRange, readonly editorRange: IRange, readonly toolName: string, readonly toolId: string, readonly displayName?: string, readonly icon?: IToolData['icon']) { }
 
 	get text(): string {
-		return `${chatVariableLeader}${this.toolName}`;
+		return `${chatAgentLeader}${this.toolName}`;
 	}
 
 	get promptText(): string {
@@ -126,7 +126,7 @@ export class ChatRequestToolSetPart implements IParsedChatRequestPart {
 	constructor(readonly range: OffsetRange, readonly editorRange: IRange, readonly id: string, readonly name: string, readonly icon: ThemeIcon, readonly tools: IChatRequestToolEntry[]) { }
 
 	get text(): string {
-		return `${chatVariableLeader}${this.name}`;
+		return `${chatAgentLeader}${this.name}`;
 	}
 
 	get promptText(): string {

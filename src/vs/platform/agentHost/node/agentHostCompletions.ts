@@ -17,8 +17,6 @@ export const IAgentHostCompletions = createDecorator<IAgentHostCompletions>('age
  * the user types one of these characters in a {@link UserMessage} input.
  */
 export const enum CompletionTriggerCharacter {
-	/** File reference, used for `@`-mentions handled by the file completion provider. */
-	File = '@',
 	/** File reference, used for `#`-mentions handled by the file completion provider. */
 	Hash = '#',
 	/** Leading slash command or skill reference. */

@@ -165,7 +165,7 @@ import { IHistoryService } from '../../services/history/common/history.js';
 import { IHostService, IToastOptions, IToastResult } from '../../services/host/browser/host.js';
 import { LabelService } from '../../services/label/common/labelService.js';
 import { ILanguageDetectionService } from '../../services/languageDetection/common/languageDetectionWorkerService.js';
-import { IPartVisibilityChangeEvent, IWorkbenchLayoutService, PanelAlignment, Position as PartPosition, Parts, SINGLE_WINDOW_PARTS } from '../../services/layout/browser/layoutService.js';
+import { DEFAULT_MODERN_UI_LAYOUT_METRICS, IModernUILayoutMetrics, IPartVisibilityChangeEvent, IWorkbenchLayoutService, PanelAlignment, Position as PartPosition, Parts, SINGLE_WINDOW_PARTS } from '../../services/layout/browser/layoutService.js';
 import { ILifecycleService, InternalBeforeShutdownEvent, IWillShutdownEventJoiner, ShutdownReason, WillShutdownEvent } from '../../services/lifecycle/common/lifecycle.js';
 import { IPaneCompositePartService } from '../../services/panecomposite/browser/panecomposite.js';
 import { IPathService } from '../../services/path/common/pathService.js';
@@ -660,6 +660,7 @@ export class TestLayoutService implements IWorkbenchLayoutService {
 	hasFocus(_part: Parts): boolean { return false; }
 	isFloatingPanelsEnabled(): boolean { return false; }
 	isModernUICompact(): boolean { return false; }
+	getModernUILayoutMetrics(): IModernUILayoutMetrics { return DEFAULT_MODERN_UI_LAYOUT_METRICS; }
 	focusPart(_part: Parts): void { }
 	hasMainWindowBorder(): boolean { return false; }
 	getMainWindowBorderRadius(): string | undefined { return undefined; }

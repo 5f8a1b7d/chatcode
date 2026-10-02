@@ -15,6 +15,7 @@ import { rewriteSourceMappingURL } from './source-map-url.ts';
 const desktopStandaloneFiles = [
 	'vs/base/parts/sandbox/electron-browser/preload.ts',
 	'vs/base/parts/sandbox/electron-browser/preload-aux.ts',
+	'vs/base/parts/sandbox/electron-browser/preload-surface.ts',
 	'vs/platform/browserView/electron-browser/preload-browserView.ts',
 ];
 

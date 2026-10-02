@@ -10,6 +10,11 @@ import { Range } from '../../../../../../../editor/common/core/range.js';
 import { IWordAtPosition, getWordAtText } from '../../../../../../../editor/common/core/wordHelper.js';
 import { ITextModel } from '../../../../../../../editor/common/model.js';
 
+/** Context and capability completion namespaces are deliberately disjoint. */
+export const contextCompletionPattern = /#[\w:-]*/g;
+export const fileContextCompletionPattern = /#[^\s]*/g;
+export const actorCapabilityCompletionPattern = /(?<=^|\s)@[\w.-]*/g;
+
 export const attachedContextCompletionSortText = '\u0000';
 export const attachedContextCompletionAdditionalTriggerCharacters = [':', '-'] as const;
 

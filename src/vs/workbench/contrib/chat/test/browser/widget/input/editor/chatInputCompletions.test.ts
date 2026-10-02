@@ -18,7 +18,7 @@ import { createTextModel } from '../../../../../../../../editor/test/common/test
 import { AgentHostInputCompletionsBase } from '../../../../../browser/widget/input/editor/agentHostInputCompletionsBase.js';
 import { AgentHostInputCompletions } from '../../../../../browser/widget/input/editor/agentHostInputCompletions.js';
 import { createChatReferenceVariableEntry } from '../../../../../common/attachments/chatVariableEntries.js';
-import { attachedContextCompletionAdditionalTriggerCharacters, attachedContextCompletionSortText, computeCompletionRanges, escapeForCharClass, getAttachedContextCompletionMatch, getAttachedContextCompletionSortText, getCompletionRangeWord, isAtTriggerCharacterToken } from '../../../../../browser/widget/input/editor/chatInputCompletionUtils.js';
+import { contextCompletionPattern, fileContextCompletionPattern, actorCapabilityCompletionPattern, attachedContextCompletionAdditionalTriggerCharacters, attachedContextCompletionSortText, computeCompletionRanges, escapeForCharClass, getAttachedContextCompletionMatch, getAttachedContextCompletionSortText, getCompletionRangeWord, isAtTriggerCharacterToken } from '../../../../../browser/widget/input/editor/chatInputCompletionUtils.js';
 import { IChatInputCompletionItem, IChatInputCompletionsParams, IChatInputCompletionsResult, IChatSessionsService } from '../../../../../common/chatSessionsService.js';
 import { chatAgentLeader, chatVariableLeader } from '../../../../../common/requestParser/chatParserTypes.js';
 import { MockChatSessionsService } from '../../../../common/mockChatSessionsService.js';
@@ -358,15 +358,15 @@ suite('computeCompletionRanges', () => {
 
 	// Helper: builds the same regex patterns used in the product code
 	function variableNameDef() {
-		return new RegExp(`[${escapeForCharClass(chatVariableLeader)}${escapeForCharClass(chatAgentLeader)}][\\w:-]*`, 'g');
+		return contextCompletionPattern;
 	}
 
 	function fileWordPattern() {
-		return new RegExp(`[${escapeForCharClass(chatVariableLeader)}${escapeForCharClass(chatAgentLeader)}][^\\s]*`, 'g');
+		return fileContextCompletionPattern;
 	}
 
 	function toolVariableNameDef() {
-		return new RegExp(`(?<=^|\\s)[${escapeForCharClass(chatVariableLeader)}${escapeForCharClass(chatAgentLeader)}]\\w*`, 'g');
+		return actorCapabilityCompletionPattern;
 	}
 
 	// --- VariableNameDef pattern tests ---
@@ -384,15 +384,10 @@ suite('computeCompletionRanges', () => {
 			});
 		});
 
-		test('matches @variable at start of line', () => {
+		test('rejects @variable at start of line', () => {
 			const model = store.add(createTextModel('@file', null, undefined, URI.parse('test:input')));
 			const result = computeCompletionRanges(model, new Position(1, 6), variableNameDef());
-			assert.ok(result);
-			assert.deepStrictEqual(result, {
-				insert: new Range(1, 1, 1, 6),
-				replace: new Range(1, 1, 1, 6),
-				varWord: { word: '@file', startColumn: 1, endColumn: 6 },
-			});
+			assert.strictEqual(result, undefined);
 		});
 
 		test('matches #variable mid-line after space', () => {
@@ -406,15 +401,10 @@ suite('computeCompletionRanges', () => {
 			});
 		});
 
-		test('matches @variable mid-line after space', () => {
+		test('rejects @variable mid-line after space', () => {
 			const model = store.add(createTextModel('hello @file', null, undefined, URI.parse('test:input')));
 			const result = computeCompletionRanges(model, new Position(1, 12), variableNameDef());
-			assert.ok(result);
-			assert.deepStrictEqual(result, {
-				insert: new Range(1, 7, 1, 12),
-				replace: new Range(1, 7, 1, 12),
-				varWord: { word: '@file', startColumn: 7, endColumn: 12 },
-			});
+			assert.strictEqual(result, undefined);
 		});
 
 		test('matches # alone (just the leader)', () => {
@@ -424,11 +414,10 @@ suite('computeCompletionRanges', () => {
 			assert.strictEqual(result.varWord?.word, '#');
 		});
 
-		test('matches @ alone (just the leader)', () => {
+		test('rejects @ alone (just the leader)', () => {
 			const model = store.add(createTextModel('@', null, undefined, URI.parse('test:input')));
 			const result = computeCompletionRanges(model, new Position(1, 2), variableNameDef());
-			assert.ok(result);
-			assert.strictEqual(result.varWord?.word, '@');
+			assert.strictEqual(result, undefined);
 		});
 
 		test('matches variable with colons and hyphens', () => {
@@ -439,13 +428,13 @@ suite('computeCompletionRanges', () => {
 		});
 
 		test('cursor in middle of variable produces partial insert range', () => {
-			const model = store.add(createTextModel('@selection', null, undefined, URI.parse('test:input')));
+			const model = store.add(createTextModel('#selection', null, undefined, URI.parse('test:input')));
 			const result = computeCompletionRanges(model, new Position(1, 5), variableNameDef());
 			assert.ok(result);
 			assert.deepStrictEqual(result, {
 				insert: new Range(1, 1, 1, 5),
 				replace: new Range(1, 1, 1, 11),
-				varWord: { word: '@selection', startColumn: 1, endColumn: 11 },
+				varWord: { word: '#selection', startColumn: 1, endColumn: 11 },
 			});
 		});
 	});
@@ -461,11 +450,10 @@ suite('computeCompletionRanges', () => {
 			assert.strictEqual(result.varWord?.word, '#file:path/to/file.ts');
 		});
 
-		test('matches @file:path/to/file.ts', () => {
+		test('rejects @file:path/to/file.ts', () => {
 			const model = store.add(createTextModel('@file:path/to/file.ts', null, undefined, URI.parse('test:input')));
 			const result = computeCompletionRanges(model, new Position(1, 22), fileWordPattern());
-			assert.ok(result);
-			assert.strictEqual(result.varWord?.word, '@file:path/to/file.ts');
+			assert.strictEqual(result, undefined);
 		});
 
 		test('stops at whitespace', () => {
@@ -480,11 +468,10 @@ suite('computeCompletionRanges', () => {
 
 	suite('with toolVariableNameDef regex', () => {
 
-		test('matches #tool at start of line', () => {
+		test('rejects #tool at start of line', () => {
 			const model = store.add(createTextModel('#tool', null, undefined, URI.parse('test:input')));
 			const result = computeCompletionRanges(model, new Position(1, 6), toolVariableNameDef());
-			assert.ok(result);
-			assert.strictEqual(result.varWord?.word, '#tool');
+			assert.strictEqual(result, undefined);
 		});
 
 		test('matches @tool at start of line', () => {
@@ -494,11 +481,10 @@ suite('computeCompletionRanges', () => {
 			assert.strictEqual(result.varWord?.word, '@tool');
 		});
 
-		test('matches #tool after space', () => {
+		test('rejects #tool after space', () => {
 			const model = store.add(createTextModel('use #fetch', null, undefined, URI.parse('test:input')));
 			const result = computeCompletionRanges(model, new Position(1, 11), toolVariableNameDef());
-			assert.ok(result);
-			assert.strictEqual(result.varWord?.word, '#fetch');
+			assert.strictEqual(result, undefined);
 		});
 
 		test('matches @tool after space', () => {
@@ -553,11 +539,10 @@ suite('computeCompletionRanges', () => {
 			assert.strictEqual(result.varWord?.word, '#file');
 		});
 
-		test('onlyOnWordStart=true accepts @variable after space', () => {
+		test('rejects @variable after space', () => {
 			const model = store.add(createTextModel('abc @file', null, undefined, URI.parse('test:input')));
 			const result = computeCompletionRanges(model, new Position(1, 10), variableNameDef(), true);
-			assert.ok(result);
-			assert.strictEqual(result.varWord?.word, '@file');
+			assert.strictEqual(result, undefined);
 		});
 	});
 });

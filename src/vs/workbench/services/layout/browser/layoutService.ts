@@ -54,7 +54,8 @@ export const enum LayoutSettings {
 	MODERN_UI = 'workbench.experimental.modernUI',
 	MODERN_UI_DENSITY = 'window.density.layout',
 	MODERN_UI_EDITOR_TAB_STYLE = 'workbench.experimental.modernUIEditorTabStyle',
-	MODERN_UI_UPPERCASE_VIEW_HEADERS = 'workbench.experimental.modernUIUppercaseViewHeaders'
+	MODERN_UI_UPPERCASE_VIEW_HEADERS = 'workbench.experimental.modernUIUppercaseViewHeaders',
+	MODERN_UI_LAYOUT = 'workbench.experimental.modernUILayout'
 }
 
 export const enum ModernUIEditorTabStyle {
@@ -94,8 +95,85 @@ export const COMPACT_FLOATING_PANEL_OUTER_MARGIN = 4;
  */
 export const FLOATING_PANEL_INNER_MARGIN = 0;
 
+/**
+ * Geometry of the Modern UI floating layout that products and themes may tune through
+ * `LayoutSettings.MODERN_UI_LAYOUT`. Every default equals the built-in constant it replaces,
+ * so an unset value keeps the stock layout. Only the default density reads these metrics;
+ * compact density keeps its joined cluster.
+ */
+export interface IModernUILayoutMetrics {
+	/** Gap between floating cards and between the card cluster and the window edges. */
+	readonly cardGap: number;
+	/** Space inside the activity bar card beside its icon column, both sides together. */
+	readonly activityBarLane: number;
+	/** Whether the activity bar is its own card instead of joining the primary side bar. */
+	readonly detachedActivityBar: boolean;
+	/** Height of the custom title bar, or `undefined` for the platform default. */
+	readonly titleBarHeight: number | undefined;
+	/** Height of the multi-tab editor title row, or `undefined` for the tab style's default. */
+	readonly editorTabsHeight: number | undefined;
+	/** Height of the editor breadcrumbs bar. */
+	readonly breadcrumbsHeight: number;
+	/**
+	 * Height reserved at the bottom of the main editor card for `.editor-part-footer`, an empty
+	 * strip inside the card that contributions can render into (for example editor status).
+	 */
+	readonly editorFooterHeight: number;
+	/** Height of side bar, panel and auxiliary bar titles, or `undefined` for the Modern UI default. */
+	readonly partTitleHeight: number | undefined;
+	/** Row height of the file explorer tree, or `undefined` for the list default. Applies to new trees. */
+	readonly explorerRowHeight: number | undefined;
+	/** Height of view section headers (for example OUTLINE), or `undefined` for the Modern UI default. */
+	readonly paneHeaderHeight: number | undefined;
+}
+
+export const DEFAULT_MODERN_UI_LAYOUT_METRICS: IModernUILayoutMetrics = {
+	cardGap: FLOATING_PANEL_MARGIN,
+	activityBarLane: 8,
+	detachedActivityBar: false,
+	titleBarHeight: undefined,
+	editorTabsHeight: undefined,
+	breadcrumbsHeight: 22,
+	editorFooterHeight: 0,
+	partTitleHeight: undefined,
+	explorerRowHeight: undefined,
+	paneHeaderHeight: undefined,
+};
+
+/**
+ * Reads `LayoutSettings.MODERN_UI_LAYOUT`, keeping the default for every missing or invalid
+ * field. Lengths are whole pixels within a range that keeps the workbench usable.
+ */
+export function resolveModernUILayoutMetrics(value: unknown): IModernUILayoutMetrics {
+	const settings = value && typeof value === 'object' ? value as Record<string, unknown> : {};
+	const length = (key: string, min: number, max: number): number | undefined => {
+		const candidate = settings[key];
+		return typeof candidate === 'number' && Number.isFinite(candidate) ? Math.min(max, Math.max(min, Math.round(candidate))) : undefined;
+	};
+	return {
+		cardGap: length('cardGap', 0, 24) ?? DEFAULT_MODERN_UI_LAYOUT_METRICS.cardGap,
+		activityBarLane: length('activityBarLane', 2, 32) ?? DEFAULT_MODERN_UI_LAYOUT_METRICS.activityBarLane,
+		detachedActivityBar: typeof settings.detachedActivityBar === 'boolean' ? settings.detachedActivityBar : DEFAULT_MODERN_UI_LAYOUT_METRICS.detachedActivityBar,
+		titleBarHeight: length('titleBarHeight', 28, 96),
+		editorTabsHeight: length('editorTabsHeight', 22, 64),
+		breadcrumbsHeight: length('breadcrumbsHeight', 16, 48) ?? DEFAULT_MODERN_UI_LAYOUT_METRICS.breadcrumbsHeight,
+		editorFooterHeight: length('editorFooterHeight', 0, 64) ?? DEFAULT_MODERN_UI_LAYOUT_METRICS.editorFooterHeight,
+		partTitleHeight: length('partTitleHeight', 22, 64),
+		explorerRowHeight: length('explorerRowHeight', 16, 48),
+		paneHeaderHeight: length('paneHeaderHeight', 16, 48),
+	};
+}
+
 export function getFloatingPanelMargin(layoutService: IWorkbenchLayoutService): number {
-	return layoutService.isModernUICompact() ? COMPACT_FLOATING_PANEL_MARGIN : FLOATING_PANEL_MARGIN;
+	return layoutService.isModernUICompact() ? COMPACT_FLOATING_PANEL_MARGIN : layoutService.getModernUILayoutMetrics().cardGap;
+}
+
+/**
+ * The gap between the card cluster and a visible status bar. Compact density keeps the
+ * stock gap; the default density uses the configured card gap.
+ */
+export function getFloatingStatusBarMargin(layoutService: IWorkbenchLayoutService): number {
+	return layoutService.isModernUICompact() ? FLOATING_PANEL_MARGIN : layoutService.getModernUILayoutMetrics().cardGap;
 }
 
 /**
@@ -105,7 +183,7 @@ export function getFloatingPanelMargin(layoutService: IWorkbenchLayoutService): 
  * `--modern-ui-floating-card-outer-margin` in `floatingPanels.css`.
  */
 export function getFloatingPanelOuterMargin(layoutService: IWorkbenchLayoutService): number {
-	return layoutService.isModernUICompact() ? COMPACT_FLOATING_PANEL_OUTER_MARGIN : FLOATING_PANEL_MARGIN;
+	return layoutService.isModernUICompact() ? COMPACT_FLOATING_PANEL_OUTER_MARGIN : layoutService.getModernUILayoutMetrics().cardGap;
 }
 
 export const enum ActivityBarPosition {
@@ -287,13 +365,22 @@ export function getFloatingPaneCompositeHorizontalMargins(layoutService: IWorkbe
 	// the side bar's trailing edge, which already uses the inner margin.
 	const meetsActivityBarRail = partId === Parts.SIDEBAR_PART
 		&& layoutService.getSideBarPosition() === Position.LEFT
-		&& layoutService.isVisible(Parts.ACTIVITYBAR_PART);
+		&& layoutService.isVisible(Parts.ACTIVITYBAR_PART)
+		&& !isFloatingActivityBarDetached(layoutService);
 	const leading = meetsActivityBarRail ? FLOATING_PANEL_INNER_MARGIN : margin;
 
 	return {
 		left: outerGutter.left ? outerMargin : leading,
 		right: outerGutter.right ? outerMargin : FLOATING_PANEL_INNER_MARGIN,
 	};
+}
+
+/**
+ * Whether the activity bar is drawn as its own card with a gap to the primary side bar.
+ * Compact density always joins its cards.
+ */
+export function isFloatingActivityBarDetached(layoutService: IWorkbenchLayoutService): boolean {
+	return layoutService.isFloatingPanelsEnabled() && !layoutService.isModernUICompact() && layoutService.getModernUILayoutMetrics().detachedActivityBar;
 }
 
 /**
@@ -338,7 +425,7 @@ export function getFloatingPaneCompositeVerticalMargins(
 			? isFloatingTopEdgeExposed(layoutService, targetWindow) ? outerMargin : FLOATING_PANEL_INNER_MARGIN
 			: margin,
 		bottom: outerEdges.bottom
-			? statusBarVisible ? FLOATING_PANEL_MARGIN : outerMargin
+			? statusBarVisible ? getFloatingStatusBarMargin(layoutService) : outerMargin
 			: FLOATING_PANEL_INNER_MARGIN
 	};
 }
@@ -389,7 +476,7 @@ export function getFloatingEditorVerticalMargins(
 			? isFloatingTopEdgeExposed(layoutService, targetWindow) ? outerMargin : FLOATING_PANEL_INNER_MARGIN
 			: margin,
 		bottom: outerEdges.bottom
-			? layoutService.isVisible(Parts.STATUSBAR_PART, targetWindow) ? FLOATING_PANEL_MARGIN : outerMargin
+			? layoutService.isVisible(Parts.STATUSBAR_PART, targetWindow) ? getFloatingStatusBarMargin(layoutService) : outerMargin
 			: FLOATING_PANEL_INNER_MARGIN
 	};
 }
@@ -559,6 +646,11 @@ export interface IWorkbenchLayoutService extends ILayoutService {
 	 * Returns whether Modern UI uses its compact density.
 	 */
 	isModernUICompact(): boolean;
+
+	/**
+	 * Returns the configured Modern UI layout geometry (`LayoutSettings.MODERN_UI_LAYOUT`).
+	 */
+	getModernUILayoutMetrics(): IModernUILayoutMetrics;
 
 	/**
 	 * Focuses the part in the target window. If the part is not visible this is a noop.

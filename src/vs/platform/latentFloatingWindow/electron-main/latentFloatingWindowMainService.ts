@@ -1,3 +1,6 @@
+import { FileAccess } from '../../../base/common/network.js';
+import { AuxiliarySurface } from '../../auxiliarySurface/electron-main/auxiliarySurface.js';
+import { IAuxiliarySurfaceRenderer, IAuxiliarySurfaceResponse } from '../../auxiliarySurface/common/auxiliarySurface.js';
 /* eslint-disable header/header */
 import { BrowserWindow, screen } from 'electron';
 import { Emitter } from '../../../base/common/event.js';
@@ -20,6 +23,21 @@ const positionKey = 'latent.floatingWindow.position';
  */
 export class LatentFloatingWindowMainService extends Disposable implements ILatentFloatingWindowService {
 	declare readonly _serviceBrand: undefined;
+	private readonly surface = this._register(new AuxiliarySurface());
+	readonly onDidRequestRendererAction = this.surface.onDidRequestRendererAction;
+	async setRenderer(_windowId: number, renderer: IAuxiliarySurfaceRenderer): Promise<void> {
+		if (this.surface.renderer?.html === renderer.html) { return; }
+		this.surface.configure(renderer);
+		if (this.window && !this.window.isDestroyed()) {
+			this.ready = false;
+			this.window.setMinimumSize(100, 40);
+			this.window.setMaximumSize(1200, 1000);
+			this.window.setSize(renderer.width, renderer.height);
+			await this.window.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(renderer.html)}`);
+		}
+	}
+	resolveRendererAction(windowId: number, requestId: string, response: IAuxiliarySurfaceResponse): Promise<void> { return this.surface.resolve(this.window, windowId, requestId, response); }
+
 
 	private readonly _onDidRequestNewThread = this._register(new Emitter<IFloatingNewThreadEvent>());
 	readonly onDidRequestNewThread = this._onDidRequestNewThread.event;
@@ -71,14 +89,15 @@ export class LatentFloatingWindowMainService extends Disposable implements ILate
 		this.ready = false;
 		const saved = this.stateService.getItem<{ x: number; y: number }>(positionKey);
 		const window = this.window = new BrowserWindow({
-			width: FLOATING_WINDOW_WIDTH,
-			height: FLOATING_WINDOW_HEIGHT,
-			minWidth: FLOATING_WINDOW_WIDTH,
-			maxWidth: FLOATING_WINDOW_WIDTH,
+			width: this.surface.renderer?.width ?? FLOATING_WINDOW_WIDTH,
+			height: this.surface.renderer?.height ?? FLOATING_WINDOW_HEIGHT,
+			minWidth: 100,
+			maxWidth: 1200,
 			...(saved ? this.clampToDisplay(saved) : {}),
 			show: false,
 			frame: false,
-			transparent: false,
+			acceptFirstMouse: true,
+			transparent: true,
 			resizable: false,
 			movable: true,
 			minimizable: false,
@@ -88,7 +107,7 @@ export class LatentFloatingWindowMainService extends Disposable implements ILate
 			skipTaskbar: true,
 			hasShadow: true,
 			title: localize('latentFloatingWindow.title', "Latent"),
-			webPreferences: { nodeIntegration: false, contextIsolation: true, sandbox: true },
+			webPreferences: { nodeIntegration: false, contextIsolation: true, sandbox: true, preload: FileAccess.asFileUri('vs/base/parts/sandbox/electron-browser/preload-surface.js').fsPath },
 		});
 		window.setAlwaysOnTop(true, 'floating');
 		if (isMacintosh) {
@@ -105,21 +124,27 @@ export class LatentFloatingWindowMainService extends Disposable implements ILate
 			this.stateService.setItem(positionKey, { x, y });
 		});
 		window.on('closed', () => {
+			this.surface.reset();
 			if (this.window === window) {
 				this.window = undefined;
 				this.ready = false;
 			}
 		});
+		window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
 		window.webContents.on('will-navigate', (event, url) => {
-			if (this.handleNavigation(url)) {
-				event.preventDefault();
-			}
+			event.preventDefault();
+			if (this.surface.handleNavigation(url, window, this.targetWindowId())) { return; }
+			this.handleNavigation(url);
+		});
+		window.webContents.on('ipc-message', (event, channel, message) => {
+			if (channel !== 'vscode:auxiliarySurface' || event.senderFrame !== window.webContents.mainFrame || typeof message !== 'string' || message.length > 500_000 || !this.surface.renderer) { return; }
+			if (!this.surface.handleNavigation(message, window, this.targetWindowId())) { this.handleNavigation(message); }
 		});
 		window.webContents.on('did-finish-load', () => {
 			this.ready = true;
 			void this.render();
 		});
-		void window.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(createFloatingWindowHtml())}`);
+		void window.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(this.surface.renderer?.html ?? createFloatingWindowHtml())}`);
 		return window;
 	}
 
@@ -165,7 +190,7 @@ export class LatentFloatingWindowMainService extends Disposable implements ILate
 			return;
 		}
 		const height = this.state.transcript?.some(turn => turn.text.length > 0) ? 116 : FLOATING_WINDOW_HEIGHT;
-		this.window.setSize(FLOATING_WINDOW_WIDTH, height);
+		if (!this.surface.renderer) { this.window.setSize(FLOATING_WINDOW_WIDTH, height); }
 		try {
 			await this.window.webContents.executeJavaScript(`window.renderFloatingState(${JSON.stringify(this.state).replaceAll('<', '\\u003c')})`);
 		} catch (error) {

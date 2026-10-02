@@ -855,6 +855,25 @@ const registry = Registry.as<IConfigurationRegistry>(ConfigurationExtensions.Con
 				'markdownDescription': localize({ key: 'modernUIEditorTabStyle', comment: ['{0} is a placeholder for a setting identifier.'] }, "Controls the editor tab style when {0} is enabled. High contrast themes retain explicit selection and focus borders.", '`#workbench.experimental.modernUI#`'),
 				agentsWindow: { default: ModernUIEditorTabStyle.Pill, readOnly: true },
 			},
+			[LayoutSettings.MODERN_UI_LAYOUT]: {
+				'type': 'object',
+				'default': {},
+				'tags': ['experimental'],
+				'additionalProperties': false,
+				'properties': {
+					'cardGap': { 'type': 'number', 'minimum': 0, 'maximum': 24, 'description': localize('modernUILayout.cardGap', "Gap in pixels between floating cards and around the card cluster. Defaults to 4.") },
+					'activityBarLane': { 'type': 'number', 'minimum': 2, 'maximum': 32, 'description': localize('modernUILayout.activityBarLane', "Space in pixels inside the activity bar card beside its icons, both sides together. Defaults to 8.") },
+					'detachedActivityBar': { 'type': 'boolean', 'description': localize('modernUILayout.detachedActivityBar', "Show the activity bar as its own card instead of joining it to the primary side bar.") },
+					'titleBarHeight': { 'type': 'number', 'minimum': 28, 'maximum': 96, 'description': localize('modernUILayout.titleBarHeight', "Height in pixels of the custom title bar in the main window.") },
+					'editorTabsHeight': { 'type': 'number', 'minimum': 22, 'maximum': 64, 'description': localize('modernUILayout.editorTabsHeight', "Height in pixels of the editor tab row when multiple tabs are shown.") },
+					'breadcrumbsHeight': { 'type': 'number', 'minimum': 16, 'maximum': 48, 'description': localize('modernUILayout.breadcrumbsHeight', "Height in pixels of the editor breadcrumbs bar. Defaults to 22.") },
+					'editorFooterHeight': { 'type': 'number', 'minimum': 0, 'maximum': 64, 'description': localize('modernUILayout.editorFooterHeight', "Height in pixels of a footer strip reserved at the bottom of the main editor card for contributed content (the `.editor-part-footer` element; no space is reserved while it carries `data-empty`). Defaults to 0.") },
+					'partTitleHeight': { 'type': 'number', 'minimum': 22, 'maximum': 64, 'description': localize('modernUILayout.partTitleHeight', "Height in pixels of the side bar, panel and secondary side bar titles.") },
+					'paneHeaderHeight': { 'type': 'number', 'minimum': 16, 'maximum': 48, 'description': localize('modernUILayout.paneHeaderHeight', "Height in pixels of view section headers.") },
+					'explorerRowHeight': { 'type': 'number', 'minimum': 16, 'maximum': 48, 'description': localize('modernUILayout.explorerRowHeight', "Row height in pixels of the file explorer. Applies to newly opened windows.") },
+				},
+				'markdownDescription': localize({ key: 'modernUILayout', comment: ['{0} is a placeholder for a setting identifier.'] }, "Adjusts the geometry of the floating layout when {0} is enabled at the default density.", '`#workbench.experimental.modernUI#`'),
+			},
 		}
 	});
 

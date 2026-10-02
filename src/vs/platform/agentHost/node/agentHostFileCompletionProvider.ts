@@ -23,9 +23,9 @@ import { AgentHostWorkspaceFiles } from './agentHostWorkspaceFiles.js';
 const MAX_RESULTS = 50;
 
 /**
- * Result of {@link extractAtToken}.
+ * Result of {@link extractContextToken}.
  */
-interface IAtToken {
+interface IContextToken {
 	readonly token: string;
 	readonly triggerChar: string;
 	readonly rangeStart: number;
@@ -33,14 +33,14 @@ interface IAtToken {
 }
 
 /**
- * Walk back from `offset` to find the most recent `@` that is preceded by
+ * Walk back from `offset` to find the most recent `#` that is preceded by
  * whitespace (or start-of-string) and not interrupted by whitespace. Returns
- * the substring after `@` together with the range to replace, or `undefined`
- * if no `@`-token is being typed at `offset`.
+ * the substring after `#` together with the range to replace, or `undefined`
+ * if no `#`-token is being typed at `offset`.
  *
  * Exported for unit testing.
  */
-export function extractAtToken(text: string, offset: number): IAtToken | undefined {
+export function extractContextToken(text: string, offset: number): IContextToken | undefined {
 	if (offset < 0 || offset > text.length) {
 		return undefined;
 	}
@@ -50,7 +50,7 @@ export function extractAtToken(text: string, offset: number): IAtToken | undefin
 		if (ch === 0x20 /* space */ || ch === 0x09 /* tab */ || ch === 0x0a /* \n */ || ch === 0x0d /* \r */) {
 			return undefined;
 		}
-		if (text[i] === CompletionTriggerCharacter.File || text[i] === CompletionTriggerCharacter.Hash) {
+		if (text[i] === CompletionTriggerCharacter.Hash) {
 			// The trigger character must be at start-of-input or preceded by whitespace.
 			if (i > 0) {
 				const prev = text.charCodeAt(i - 1);
@@ -95,9 +95,9 @@ class FileCompletionCandidateAccessor implements IItemAccessor<IFileCompletionCa
 /**
  * Generic completion provider that contributes workspace file references
  * for a {@link CompletionItemKind.UserMessage} input — typically used for
- * `@`-mentions in the user message composer.
+ * `#`-mentions in the user message composer.
  *
- * When the user has typed an `@`-prefixed token at the cursor position,
+ * When the user has typed an `#`-prefixed token at the cursor position,
  * this provider enumerates files under the session's effective working directories
  * (via {@link AgentHostWorkspaceFiles}, which uses ripgrep and respects
  * `.gitignore`), ranks them with the same fuzzy scorer used by the
@@ -108,7 +108,7 @@ export class AgentHostFileCompletionProvider implements IAgentHostCompletionItem
 
 	readonly kinds: ReadonlySet<CompletionItemKind> = new Set([CompletionItemKind.UserMessage]);
 
-	readonly triggerCharacters: readonly string[] = [CompletionTriggerCharacter.File, CompletionTriggerCharacter.Hash];
+	readonly triggerCharacters: readonly string[] = [CompletionTriggerCharacter.Hash];
 
 	constructor(
 		private readonly _stateManager: AgentHostStateManager,
@@ -126,7 +126,7 @@ export class AgentHostFileCompletionProvider implements IAgentHostCompletionItem
 			return [];
 		}
 
-		const at = extractAtToken(params.text, params.offset);
+		const at = extractContextToken(params.text, params.offset);
 		if (!at) {
 			return [];
 		}

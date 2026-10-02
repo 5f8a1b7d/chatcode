@@ -16,7 +16,7 @@ import { CompletionItemKind } from '../../common/state/protocol/commands.js';
 import { MessageAttachmentKind, type MessageAttachment } from '../../common/state/protocol/state.js';
 import { AgentHostStateManager } from '../../node/agentHostStateManager.js';
 import { AgentHostCompletions, CompletionTriggerCharacter } from '../../node/agentHostCompletions.js';
-import { AgentHostFileCompletionProvider, extractAtToken } from '../../node/agentHostFileCompletionProvider.js';
+import { AgentHostFileCompletionProvider, extractContextToken } from '../../node/agentHostFileCompletionProvider.js';
 import { AgentHostWorkspaceFiles, IAgentHostWorkspaceFilesResult } from '../../node/agentHostWorkspaceFiles.js';
 
 function isUriArray(value: readonly URI[] | ReadonlyMap<string, readonly URI[] | Error>): value is readonly URI[] {
@@ -60,69 +60,58 @@ suite('AgentHostFileCompletionProvider', () => {
 	teardown(() => disposables.clear());
 	ensureNoDisposablesAreLeakedInTestSuite();
 
-	test('announces "@" and "#" as trigger characters via IAgentHostCompletions', () => {
+	test('announces "#" as trigger characters via IAgentHostCompletions', () => {
 		const completions = disposables.add(new AgentHostCompletions(new NullLogService()));
 		const stateManager = disposables.add(new AgentHostStateManager(new NullLogService()));
 		const workspaceFiles = disposables.add(new FakeWorkspaceFiles([]));
 		disposables.add(completions.registerProvider(new AgentHostFileCompletionProvider(stateManager, workspaceFiles, new NullLogService())));
-		assert.deepStrictEqual([...completions.triggerCharacters], [CompletionTriggerCharacter.File, CompletionTriggerCharacter.Hash]);
+		assert.deepStrictEqual([...completions.triggerCharacters], [CompletionTriggerCharacter.Hash]);
 	});
 
-	suite('extractAtToken', () => {
-		test('returns undefined when there is no @', () => {
-			assert.strictEqual(extractAtToken('hello world', 5), undefined);
+	suite('extractContextToken', () => {
+		test('returns undefined when there is no #', () => {
+			assert.strictEqual(extractContextToken('hello world', 5), undefined);
 		});
 
 		test('returns undefined when offset is in plain text after whitespace', () => {
-			assert.strictEqual(extractAtToken('look at the file', 7), undefined);
+			assert.strictEqual(extractContextToken('look at the file', 7), undefined);
 		});
 
-		test('extracts a lone @ at end of string', () => {
-			assert.deepStrictEqual(extractAtToken('look at @', 9), { token: '', triggerChar: '@', rangeStart: 8, rangeEnd: 9 });
-		});
-
-		test('extracts an @-token after a space', () => {
-			assert.deepStrictEqual(extractAtToken('look at @foo', 12), { token: 'foo', triggerChar: '@', rangeStart: 8, rangeEnd: 12 });
-		});
-
-		test('extracts an @-token at start of string', () => {
-			assert.deepStrictEqual(extractAtToken('@foo', 4), { token: 'foo', triggerChar: '@', rangeStart: 0, rangeEnd: 4 });
-		});
-
-		test('returns undefined when @ is not preceded by whitespace', () => {
-			// e.g. an email-like token
-			assert.strictEqual(extractAtToken('user@example', 12), undefined);
-		});
-
-		test('returns undefined when whitespace separates @ from the cursor', () => {
-			assert.strictEqual(extractAtToken('@foo bar', 8), undefined);
-		});
-
-		test('honours offset (token = chars between @ and cursor)', () => {
-			// Cursor is mid-token: "look at @fo|o"
-			assert.deepStrictEqual(extractAtToken('look at @foo', 11), { token: 'fo', triggerChar: '@', rangeStart: 8, rangeEnd: 11 });
-		});
-
-		test('returns undefined for out-of-range offset', () => {
-			assert.strictEqual(extractAtToken('hi', 99), undefined);
-			assert.strictEqual(extractAtToken('hi', -1), undefined);
+		test('reserves @ for actors', () => {
+			assert.strictEqual(extractContextToken('@reviewer', 9), undefined);
 		});
 
 		test('extracts a lone # at end of string', () => {
-			assert.deepStrictEqual(extractAtToken('look at #', 9), { token: '', triggerChar: '#', rangeStart: 8, rangeEnd: 9 });
+			assert.deepStrictEqual(extractContextToken('look at #', 9), { token: '', triggerChar: '#', rangeStart: 8, rangeEnd: 9 });
 		});
 
 		test('extracts a #-token after a space', () => {
-			assert.deepStrictEqual(extractAtToken('look at #foo', 12), { token: 'foo', triggerChar: '#', rangeStart: 8, rangeEnd: 12 });
+			assert.deepStrictEqual(extractContextToken('look at #foo', 12), { token: 'foo', triggerChar: '#', rangeStart: 8, rangeEnd: 12 });
 		});
 
 		test('extracts a #-token at start of string', () => {
-			assert.deepStrictEqual(extractAtToken('#foo', 4), { token: 'foo', triggerChar: '#', rangeStart: 0, rangeEnd: 4 });
+			assert.deepStrictEqual(extractContextToken('#foo', 4), { token: 'foo', triggerChar: '#', rangeStart: 0, rangeEnd: 4 });
 		});
 
 		test('returns undefined when # is not preceded by whitespace', () => {
-			assert.strictEqual(extractAtToken('foo#bar', 7), undefined);
+			// A fragment inside a word is ordinary text.
+			assert.strictEqual(extractContextToken('user#example', 12), undefined);
 		});
+
+		test('returns undefined when whitespace separates # from the cursor', () => {
+			assert.strictEqual(extractContextToken('#foo bar', 8), undefined);
+		});
+
+		test('honours offset (token = chars between # and cursor)', () => {
+			// Cursor is mid-token: "look at #fo|o"
+			assert.deepStrictEqual(extractContextToken('look at #foo', 11), { token: 'fo', triggerChar: '#', rangeStart: 8, rangeEnd: 11 });
+		});
+
+		test('returns undefined for out-of-range offset', () => {
+			assert.strictEqual(extractContextToken('hi', 99), undefined);
+			assert.strictEqual(extractContextToken('hi', -1), undefined);
+		});
+
 	});
 
 	suite('provideCompletionItems', () => {
@@ -159,7 +148,7 @@ suite('AgentHostFileCompletionProvider', () => {
 		test('returns [] when session has no working directory', async () => {
 			const { sessionUri, provider } = setup({});
 			const result = await provider.provideCompletionItems(
-				{ kind: CompletionItemKind.UserMessage, channel: sessionUri, text: '@', offset: 1 },
+				{ kind: CompletionItemKind.UserMessage, channel: sessionUri, text: '#', offset: 1 },
 				CancellationToken.None,
 			);
 			assert.deepStrictEqual(result, []);
@@ -168,13 +157,13 @@ suite('AgentHostFileCompletionProvider', () => {
 		test('returns [] for non-file working directory', async () => {
 			const { sessionUri, provider } = setup({ workingDirectory: URI.parse('vscode-vfs://github/foo/bar') });
 			const result = await provider.provideCompletionItems(
-				{ kind: CompletionItemKind.UserMessage, channel: sessionUri, text: '@', offset: 1 },
+				{ kind: CompletionItemKind.UserMessage, channel: sessionUri, text: '#', offset: 1 },
 				CancellationToken.None,
 			);
 			assert.deepStrictEqual(result, []);
 		});
 
-		test('returns [] when there is no @-token at the cursor', async () => {
+		test('returns [] when there is no #-token at the cursor', async () => {
 			const wd = URI.file('/wd');
 			const files = [URI.joinPath(wd, 'foo.ts')];
 			const { sessionUri, provider } = setup({ workingDirectory: wd, files });
@@ -194,12 +183,12 @@ suite('AgentHostFileCompletionProvider', () => {
 			];
 			const { sessionUri, provider } = setup({ workingDirectory: wd, files });
 			const result = await provider.provideCompletionItems(
-				{ kind: CompletionItemKind.UserMessage, channel: sessionUri, text: 'see @util', offset: 9 },
+				{ kind: CompletionItemKind.UserMessage, channel: sessionUri, text: 'see #util', offset: 9 },
 				CancellationToken.None,
 			);
 			assert.strictEqual(result.length, 1);
 			assert.deepStrictEqual(result[0], {
-				insertText: '@util.ts',
+				insertText: '#util.ts',
 				rangeStart: 4,
 				rangeEnd: 9,
 				attachment: {
@@ -229,7 +218,7 @@ suite('AgentHostFileCompletionProvider', () => {
 			const files = Array.from({ length: 100 }, (_, i) => URI.joinPath(wd, `file${i}.ts`));
 			const { sessionUri, provider } = setup({ workingDirectory: wd, files });
 			const result = await provider.provideCompletionItems(
-				{ kind: CompletionItemKind.UserMessage, channel: sessionUri, text: '@', offset: 1 },
+				{ kind: CompletionItemKind.UserMessage, channel: sessionUri, text: '#', offset: 1 },
 				CancellationToken.None,
 			);
 			assert.strictEqual(result.length, 50);
@@ -254,7 +243,7 @@ suite('AgentHostFileCompletionProvider', () => {
 			});
 
 			const completions = await provider.provideCompletionItems(
-				{ kind: CompletionItemKind.UserMessage, channel: sessionUri, text: '@', offset: 1 },
+				{ kind: CompletionItemKind.UserMessage, channel: sessionUri, text: '#', offset: 1 },
 				CancellationToken.None,
 			);
 
@@ -281,7 +270,7 @@ suite('AgentHostFileCompletionProvider', () => {
 			});
 
 			const completions = await provider.provideCompletionItems(
-				{ kind: CompletionItemKind.UserMessage, channel: sessionUri, text: '@', offset: 1 },
+				{ kind: CompletionItemKind.UserMessage, channel: sessionUri, text: '#', offset: 1 },
 				CancellationToken.None,
 			);
 
@@ -305,7 +294,7 @@ suite('AgentHostFileCompletionProvider', () => {
 			});
 
 			const completions = await provider.provideCompletionItems(
-				{ kind: CompletionItemKind.UserMessage, channel: sessionUri, text: '@', offset: 1 },
+				{ kind: CompletionItemKind.UserMessage, channel: sessionUri, text: '#', offset: 1 },
 				CancellationToken.None,
 			);
 
@@ -337,7 +326,7 @@ suite('AgentHostFileCompletionProvider', () => {
 			});
 
 			const completions = await provider.provideCompletionItems(
-				{ kind: CompletionItemKind.UserMessage, channel: sessionUri, text: '@', offset: 1 },
+				{ kind: CompletionItemKind.UserMessage, channel: sessionUri, text: '#', offset: 1 },
 				CancellationToken.None,
 			);
 
@@ -366,7 +355,7 @@ suite('AgentHostFileCompletionProvider', () => {
 			});
 
 			const completions = await provider.provideCompletionItems(
-				{ kind: CompletionItemKind.UserMessage, channel: sessionUri, text: '@index', offset: 6 },
+				{ kind: CompletionItemKind.UserMessage, channel: sessionUri, text: '#index', offset: 6 },
 				CancellationToken.None,
 			);
 
@@ -380,8 +369,8 @@ suite('AgentHostFileCompletionProvider', () => {
 				labelsAreDistinct: items[0].label !== items[1].label,
 			}, {
 				items: [
-					{ insertText: '@index.ts', label: '/a/\u2026 \u2022 index.ts', uri: fileA.toString() },
-					{ insertText: '@index.ts', label: '/b/\u2026 \u2022 index.ts', uri: fileB.toString() },
+					{ insertText: '#index.ts', label: '/a/\u2026 \u2022 index.ts', uri: fileA.toString() },
+					{ insertText: '#index.ts', label: '/b/\u2026 \u2022 index.ts', uri: fileB.toString() },
 				],
 				labelsAreDistinct: true,
 			});
@@ -401,7 +390,7 @@ suite('AgentHostFileCompletionProvider', () => {
 			});
 
 			const completions = await provider.provideCompletionItems(
-				{ kind: CompletionItemKind.UserMessage, channel: sessionUri, text: '@package', offset: 8 },
+				{ kind: CompletionItemKind.UserMessage, channel: sessionUri, text: '#package', offset: 8 },
 				CancellationToken.None,
 			);
 
@@ -425,7 +414,7 @@ suite('AgentHostFileCompletionProvider', () => {
 			});
 
 			const completions = await provider.provideCompletionItems(
-				{ kind: CompletionItemKind.UserMessage, channel: sessionUri, text: '@target', offset: 7 },
+				{ kind: CompletionItemKind.UserMessage, channel: sessionUri, text: '#target', offset: 7 },
 				CancellationToken.None,
 			);
 
@@ -447,7 +436,7 @@ suite('AgentHostFileCompletionProvider', () => {
 			});
 
 			const completions = await provider.provideCompletionItems(
-				{ kind: CompletionItemKind.UserMessage, channel: sessionUri, text: '@target', offset: 7 },
+				{ kind: CompletionItemKind.UserMessage, channel: sessionUri, text: '#target', offset: 7 },
 				CancellationToken.None,
 			);
 
@@ -456,7 +445,7 @@ suite('AgentHostFileCompletionProvider', () => {
 				items: completions.map(item => item.insertText),
 			}, {
 				enumerated: [rootA.path, rootB.path],
-				items: ['@target.ts'],
+				items: ['#target.ts'],
 			});
 		});
 
@@ -472,7 +461,7 @@ suite('AgentHostFileCompletionProvider', () => {
 			});
 
 			const completions = await provider.provideCompletionItems(
-				{ kind: CompletionItemKind.UserMessage, channel: sessionUri, text: '@target', offset: 7 },
+				{ kind: CompletionItemKind.UserMessage, channel: sessionUri, text: '#target', offset: 7 },
 				CancellationToken.None,
 			);
 
@@ -494,12 +483,12 @@ suite('AgentHostFileCompletionProvider', () => {
 			stateManager.dispatchServerAction(defaultChatUri, { type: ActionType.ChatWorkingDirectorySet, directory: rootB.toString() });
 
 			const subset = await provider.provideCompletionItems(
-				{ kind: CompletionItemKind.UserMessage, channel: defaultChatUri, text: '@', offset: 1 },
+				{ kind: CompletionItemKind.UserMessage, channel: defaultChatUri, text: '#', offset: 1 },
 				CancellationToken.None,
 			);
 			stateManager.dispatchServerAction(defaultChatUri, { type: ActionType.ChatWorkingDirectoryRemoved, directory: rootB.toString() });
 			const emptySubset = await provider.provideCompletionItems(
-				{ kind: CompletionItemKind.UserMessage, channel: defaultChatUri, text: '@', offset: 1 },
+				{ kind: CompletionItemKind.UserMessage, channel: defaultChatUri, text: '#', offset: 1 },
 				CancellationToken.None,
 			);
 
@@ -509,7 +498,7 @@ suite('AgentHostFileCompletionProvider', () => {
 				emptySubset,
 			}, {
 				enumerated: [rootB.path],
-				subset: ['@b.ts'],
+				subset: ['#b.ts'],
 				emptySubset: [],
 			});
 		});

@@ -21,6 +21,7 @@ import { BooleanVerifier, EnumVerifier, NumberVerifier, ObjectVerifier, SetVerif
 import { IAuxiliaryWindowOpenOptions } from '../../../services/auxiliaryWindow/browser/auxiliaryWindowService.js';
 import { ContextKeyValue, IContextKey, RawContextKey } from '../../../../platform/contextkey/common/contextkey.js';
 import { coalesce } from '../../../../base/common/arrays.js';
+import { LayoutSettings, ModernUIDensity, resolveModernUILayoutMetrics } from '../../../services/layout/browser/layoutService.js';
 
 export interface IEditorPartCreationOptions {
 	readonly restorePreviousState: boolean;
@@ -80,7 +81,8 @@ export const DEFAULT_EDITOR_PART_OPTIONS: IEditorPartOptions = {
 };
 
 export function impactsEditorPartOptions(event: IConfigurationChangeEvent): boolean {
-	return event.affectsConfiguration('workbench.editor') || event.affectsConfiguration('workbench.iconTheme') || event.affectsConfiguration('window.density');
+	return event.affectsConfiguration('workbench.editor') || event.affectsConfiguration('workbench.iconTheme') || event.affectsConfiguration('window.density')
+		|| event.affectsConfiguration(LayoutSettings.MODERN_UI) || event.affectsConfiguration(LayoutSettings.MODERN_UI_LAYOUT);
 }
 
 export function getEditorPartOptions(configurationService: IConfigurationService, themeService: IThemeService): IEditorPartOptions {
@@ -114,7 +116,16 @@ export function getEditorPartOptions(configurationService: IConfigurationService
 		options.tabHeight = windowConfig.window.density.editorTabHeight;
 	}
 
-	return validateEditorPartOptions(options);
+	const validated = validateEditorPartOptions(options);
+
+	// Modern UI layout geometry (default density only; compact keeps its own sizes)
+	if (configurationService.getValue<boolean>(LayoutSettings.MODERN_UI) === true && configurationService.getValue<ModernUIDensity>(LayoutSettings.MODERN_UI_DENSITY) !== ModernUIDensity.Compact) {
+		const metrics = resolveModernUILayoutMetrics(configurationService.getValue(LayoutSettings.MODERN_UI_LAYOUT));
+		validated.breadcrumbsHeight = metrics.breadcrumbsHeight;
+		validated.modernTabsHeight = metrics.editorTabsHeight;
+	}
+
+	return validated;
 }
 
 function validateEditorPartOptions(options: IEditorPartOptions): IEditorPartOptions {

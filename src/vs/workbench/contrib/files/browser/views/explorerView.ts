@@ -303,6 +303,13 @@ export class ExplorerView extends ViewPane implements IExplorerView {
 		}
 	}
 
+	/** Row height, from the Modern UI layout when it configures one. */
+	private get explorerRowHeight(): number {
+		return this.layoutService.isFloatingPanelsEnabled() && !this.layoutService.isModernUICompact()
+			? this.layoutService.getModernUILayoutMetrics().explorerRowHeight ?? ExplorerDelegate.ITEM_HEIGHT
+			: ExplorerDelegate.ITEM_HEIGHT;
+	}
+
 	@memoize private get fileCopiedContextKey(): IContextKey<boolean> {
 		return FileCopiedContext.bindTo(this.contextKeyService);
 	}
@@ -524,7 +531,7 @@ export class ExplorerView extends ViewPane implements IExplorerView {
 
 		const getFileNestingSettings = (item?: ExplorerItem) => this.configurationService.getValue<IFilesConfiguration>({ resource: item?.root.resource }).explorer.fileNesting;
 
-		this.tree = this.instantiationService.createInstance(WorkbenchCompressibleAsyncDataTree<ExplorerItem | ExplorerItem[], ExplorerItem, FuzzyScore>, 'FileExplorer', container, new ExplorerDelegate(), new ExplorerCompressionDelegate(), [this.renderer],
+		this.tree = this.instantiationService.createInstance(WorkbenchCompressibleAsyncDataTree<ExplorerItem | ExplorerItem[], ExplorerItem, FuzzyScore>, 'FileExplorer', container, new ExplorerDelegate(this.explorerRowHeight), new ExplorerCompressionDelegate(), [this.renderer],
 			this.instantiationService.createInstance(ExplorerDataSource, this.filter, this.findProvider), {
 			compressionEnabled: isCompressionEnabled(),
 			accessibilityProvider: this.renderer,
@@ -572,7 +579,7 @@ export class ExplorerView extends ViewPane implements IExplorerView {
 				}
 				return false;
 			},
-			paddingBottom: ExplorerDelegate.ITEM_HEIGHT,
+			paddingBottom: this.explorerRowHeight,
 			overrideStyles: this.getLocationBasedColors().listOverrideStyles,
 			findProvider: this.findProvider,
 		});

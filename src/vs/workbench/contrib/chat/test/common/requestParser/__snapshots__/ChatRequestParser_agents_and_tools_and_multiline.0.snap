@@ -129,5 +129,5 @@
       kind: "tool"
     }
   ],
-  text: "@agent /subCommand \nPlease do with #selection\nand #debugConsole"
+  text: "@agent /subCommand \nPlease do with @selection\nand @debugConsole"
 }

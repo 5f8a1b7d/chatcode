@@ -1,3 +1,4 @@
+import { IAuxiliarySurfaceService } from '../../auxiliarySurface/common/auxiliarySurface.js';
 /* eslint-disable header/header */
 import { Event } from '../../../base/common/event.js';
 import { createDecorator } from '../../instantiation/common/instantiation.js';
@@ -12,6 +13,7 @@ export type FloatingVoiceState = 'off' | 'connecting' | 'listening' | 'speaking'
 
 export interface IFloatingWindowState {
 	readonly threadTitle?: string;
+	readonly muted?: boolean;
 	readonly voice: FloatingVoiceState;
 	readonly statusText?: string;
 	readonly transcript?: readonly { readonly role: 'user' | 'assistant'; readonly text: string }[];
@@ -28,7 +30,7 @@ export interface IFloatingVoiceEvent {
 
 export const ILatentFloatingWindowService = createDecorator<ILatentFloatingWindowService>('latentFloatingWindowService');
 
-export interface ILatentFloatingWindowService {
+export interface ILatentFloatingWindowService extends IAuxiliarySurfaceService {
 	readonly _serviceBrand: undefined;
 	readonly onDidRequestNewThread: Event<IFloatingNewThreadEvent>;
 	readonly onDidToggleVoice: Event<IFloatingVoiceEvent>;
@@ -44,6 +46,7 @@ export function isFloatingWindowState(value: unknown): value is IFloatingWindowS
 	}
 	const candidate = value as Partial<IFloatingWindowState>;
 	return ['off', 'connecting', 'listening', 'speaking', 'error'].includes(candidate.voice as string)
+		&& (candidate.muted === undefined || typeof candidate.muted === 'boolean')
 		&& (candidate.threadTitle === undefined || typeof candidate.threadTitle === 'string')
 		&& (candidate.statusText === undefined || typeof candidate.statusText === 'string')
 		&& (candidate.transcript === undefined || (Array.isArray(candidate.transcript) && candidate.transcript.every(item => (item.role === 'user' || item.role === 'assistant') && typeof item.text === 'string')));

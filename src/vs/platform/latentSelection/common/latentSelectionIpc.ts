@@ -1,3 +1,4 @@
+import { IAuxiliarySurfaceRenderer, IAuxiliarySurfaceRequest, IAuxiliarySurfaceResponse, isAuxiliarySurfaceRenderer, isAuxiliarySurfaceResponse } from '../../auxiliarySurface/common/auxiliarySurface.js';
 /* eslint-disable header/header */
 import { Event } from '../../../base/common/event.js';
 import { IChannel, IServerChannel } from '../../../base/parts/ipc/common/ipc.js';
@@ -7,6 +8,7 @@ export class LatentSelectionChannel implements IServerChannel {
 	constructor(private readonly service: ILatentSelectionService) { }
 
 	listen<T>(_context: unknown, event: string): Event<T> {
+		if (event === 'onDidRequestRendererAction') { return this.service.onDidRequestRendererAction as Event<T>; }
 		if (event === 'onDidRequestAction') {
 			return this.service.onDidRequestAction as Event<T>;
 		}
@@ -19,6 +21,12 @@ export class LatentSelectionChannel implements IServerChannel {
 		}
 		const windowId = argument.windowId as number;
 		switch (command) {
+			case 'setRenderer':
+				if (!Number.isInteger(argument.windowId) || !isAuxiliarySurfaceRenderer(argument.renderer)) { throw new Error('Invalid auxiliary renderer'); }
+				return this.service.setRenderer(argument.windowId as number, argument.renderer) as Promise<T>;
+			case 'resolveRendererAction':
+				if (!Number.isInteger(argument.windowId) || typeof argument.requestId !== 'string' || !isAuxiliarySurfaceResponse(argument.response)) { throw new Error('Invalid auxiliary response'); }
+				return this.service.resolveRendererAction(argument.windowId as number, argument.requestId, argument.response) as Promise<T>;
 			case 'setEnabled':
 				if (typeof argument.enabled !== 'boolean') {
 					throw new Error('Invalid Latent setEnabled request');
@@ -54,10 +62,15 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 export class LatentSelectionChannelClient implements ILatentSelectionService {
 	declare readonly _serviceBrand: undefined;
+	readonly onDidRequestRendererAction: Event<IAuxiliarySurfaceRequest>;
+	setRenderer(windowId: number, renderer: IAuxiliarySurfaceRenderer): Promise<void> { return this.channel.call('setRenderer', { windowId, renderer }); }
+	resolveRendererAction(windowId: number, requestId: string, response: IAuxiliarySurfaceResponse): Promise<void> { return this.channel.call('resolveRendererAction', { windowId, requestId, response }); }
+
 
 	readonly onDidRequestAction: Event<ISelectionActionEvent>;
 
 	constructor(private readonly channel: IChannel) {
+		this.onDidRequestRendererAction = channel.listen<IAuxiliarySurfaceRequest>('onDidRequestRendererAction');
 		this.onDidRequestAction = channel.listen<ISelectionActionEvent>('onDidRequestAction');
 	}
 

@@ -165,6 +165,8 @@ export class EditorPart extends Part<IEditorPartMemento> implements IEditorPart,
 	protected readonly scopedContextKeyService: IContextKeyService;
 
 	private centeredLayoutWidget!: CenteredViewLayout;
+	private footerContainer: HTMLElement | undefined;
+	private footerHostDimension: Dimension | undefined;
 
 	private gridWidget!: SerializableGrid<IEditorGroupView>;
 	private readonly gridWidgetDisposables = this._register(new DisposableStore());
@@ -1075,6 +1077,15 @@ export class EditorPart extends Part<IEditorPartMemento> implements IEditorPart,
 
 		// Centered layout widget
 		this.centeredLayoutWidget = this._register(new CenteredViewLayout(this.container, this.gridWidgetView, this.profileMemento[EditorPart.EDITOR_PART_CENTERED_VIEW_STORAGE_KEY], this._partOptions.centeredLayoutFixedWidth));
+
+		// Footer strip inside the main editor card (Modern UI layout `editorFooterHeight`)
+		if (this.windowId === mainWindow.vscodeWindowId) {
+			const footerContainer = this.footerContainer = this.container.appendChild($('.editor-part-footer'));
+			footerContainer.style.display = 'none';
+			const footerObserver = new MutationObserver(() => this.footerHostDimension && this.doLayout(this.footerHostDimension));
+			footerObserver.observe(footerContainer, { attributes: true, attributeFilter: ['data-empty'] });
+			this._register(toDisposable(() => footerObserver.disconnect()));
+		}
 		this._register(this.onDidChangeEditorPartOptions(e => this.centeredLayoutWidget.setFixedWidth(e.newPartOptions.centeredLayoutFixedWidth ?? false)));
 
 		// Drag & Drop support
@@ -1468,6 +1479,14 @@ export class EditorPart extends Part<IEditorPartMemento> implements IEditorPart,
 	}
 
 	private doLayout(dimension: Dimension, top = this.top, left = this.left): void {
+		this.footerHostDimension = dimension;
+		// A contribution marks the footer `data-empty` while it has nothing to show; then no space is reserved.
+		const footerHeight = this.footerContainer && !this.footerContainer.hasAttribute('data-empty') && this.layoutService.isFloatingPanelsEnabled() ? Math.min(dimension.height, this.layoutService.getModernUILayoutMetrics().editorFooterHeight) : 0;
+		if (this.footerContainer) {
+			this.footerContainer.style.display = footerHeight ? '' : 'none';
+			this.footerContainer.style.height = `${footerHeight}px`;
+		}
+		dimension = new Dimension(dimension.width, dimension.height - footerHeight);
 		this._contentDimension = dimension;
 
 		// Layout Grid
@@ -1589,13 +1608,13 @@ export class EditorPart extends Part<IEditorPartMemento> implements IEditorPart,
 
 		// Layout, but only if the part has already been laid out at least once.
 		// When restoring a working set into an editor part that has never been
-		// shown (e.g. on reload with the editor area hidden), `_contentDimension`
+		// shown (e.g. on reload with the editor area hidden), the layout dimension
 		// is still undefined; laying out here would throw and abort before the
 		// `onDidAddGroup` events below are fired (leaving the restored groups
 		// unregistered with the editor service). The grid is laid out later when
 		// the part is first shown.
-		if (this._contentDimension) {
-			this.doLayout(this._contentDimension);
+		if (this.footerHostDimension) {
+			this.doLayout(this.footerHostDimension);
 		}
 
 		// Update container

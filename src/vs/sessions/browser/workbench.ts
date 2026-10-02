@@ -15,7 +15,7 @@ import { isFullscreen, onDidChangeFullscreen, isChrome, isFirefox, isSafari } fr
 import { mark } from '../../base/common/performance.js';
 import { onUnexpectedError, setUnexpectedErrorHandler } from '../../base/common/errors.js';
 import { isWindows, isLinux, isWeb, isNative, isMacintosh, isIOS } from '../../base/common/platform.js';
-import { Parts, Position, PanelAlignment, IWorkbenchLayoutService, SINGLE_WINDOW_PARTS, MULTI_WINDOW_PARTS, IPartVisibilityChangeEvent, positionToString } from '../../workbench/services/layout/browser/layoutService.js';
+import { DEFAULT_MODERN_UI_LAYOUT_METRICS, IModernUILayoutMetrics, Parts, Position, PanelAlignment, IWorkbenchLayoutService, SINGLE_WINDOW_PARTS, MULTI_WINDOW_PARTS, IPartVisibilityChangeEvent, positionToString } from '../../workbench/services/layout/browser/layoutService.js';
 import { ILayoutOffsetInfo } from '../../platform/layout/browser/layoutService.js';
 import { Part } from '../../workbench/browser/part.js';
 import { Direction, ISerializableView, ISerializedGrid, ISerializedLeafNode, ISerializedNode, IViewSize, Orientation, SerializableGrid } from '../../base/browser/ui/grid/grid.js';
@@ -1967,6 +1967,10 @@ export class Workbench extends Disposable implements IAgentWorkbenchLayoutServic
 
 	isModernUICompact(): boolean {
 		return false;
+	}
+
+	getModernUILayoutMetrics(): IModernUILayoutMetrics {
+		return DEFAULT_MODERN_UI_LAYOUT_METRICS;
 	}
 
 	getLayoutClasses(): string[] {

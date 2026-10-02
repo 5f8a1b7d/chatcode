@@ -4,7 +4,7 @@ import { mainWindow } from '../../../../../base/browser/window.js';
 import { Disposable, MutableDisposable } from '../../../../../base/common/lifecycle.js';
 import { platformLocale } from '../../../../../base/common/platform.js';
 import { localize } from '../../../../../nls.js';
-import { ICommandService } from '../../../../../platform/commands/common/commands.js';
+import { CommandsRegistry, ICommandService } from '../../../../../platform/commands/common/commands.js';
 import { IConfigurationService } from '../../../../../platform/configuration/common/configuration.js';
 import { registerMainProcessRemoteService } from '../../../../../platform/ipc/electron-browser/services.js';
 import { IFloatingWindowState, ILatentFloatingWindowService, LATENT_FLOATING_WINDOW_CHANNEL } from '../../../../../platform/latentFloatingWindow/common/latentFloatingWindow.js';
@@ -59,6 +59,12 @@ class FloatingWindowContribution extends Disposable implements IWorkbenchContrib
 				void this.toggleVoice().catch(error => this.logService.error('[LatentFloatingWindow] Voice failed.', error));
 			}
 		}));
+		this._register(CommandsRegistry.registerCommand('latent.floatingWindow.newThread', (_accessor, text: string) => this.newThread(typeof text === 'string' ? text.slice(0, 100_000) : '')));
+		this._register(CommandsRegistry.registerCommand('latent.floatingWindow.voice', async (_accessor, action: string) => {
+			if (action === 'mute') { this.voice.value?.setMuted(!this.voice.value.muted); await this.publishState(); }
+			else if (action === 'stop') { await this.stopVoice(); }
+			else if (action === 'start' && !this.voice.value) { await this.toggleVoice(); }
+		}));
 		void this.syncEnabled();
 	}
 
@@ -79,6 +85,7 @@ class FloatingWindowContribution extends Disposable implements IWorkbenchContrib
 		const voice = this.voice.value?.state;
 		const state: IFloatingWindowState = {
 			threadTitle: thread?.title,
+			muted: this.voice.value?.muted ?? false,
 			voice: voice === 'listening' || voice === 'speaking' || voice === 'connecting' || voice === 'error' ? voice : 'off',
 			transcript: this.transcript.slice(-4),
 			...partial,

@@ -66,6 +66,7 @@ class ActionViewItemService implements IActionViewItemService {
 			throw new Error(`A provider for the command ${commandOrSubmenuId} and menu ${menu} is already registered.`);
 		}
 		this._providers.set(id, provider);
+		this._onDidChange.fire(menu);
 
 		const listener = event?.(() => {
 			this._onDidChange.fire(menu);
@@ -74,6 +75,7 @@ class ActionViewItemService implements IActionViewItemService {
 		return toDisposable(() => {
 			listener?.dispose();
 			this._providers.delete(id);
+			this._onDidChange.fire(menu);
 		});
 	}
 

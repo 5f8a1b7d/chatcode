@@ -98,5 +98,5 @@
       kind: "tool"
     }
   ],
-  text: "@agent Please \ndo /subCommand with #selection\nand #debugConsole"
+  text: "@agent Please \ndo /subCommand with @selection\nand @debugConsole"
 }

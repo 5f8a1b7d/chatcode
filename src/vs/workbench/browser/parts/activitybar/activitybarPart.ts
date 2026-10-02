@@ -9,7 +9,7 @@ import { localize, localize2 } from '../../../../nls.js';
 import { ActionsOrientation } from '../../../../base/browser/ui/actionbar/actionbar.js';
 import { Part } from '../../part.js';
 import { mainWindow } from '../../../../base/browser/window.js';
-import { ActivityBarPosition, IWorkbenchLayoutService, LayoutSettings, Parts, Position, FLOATING_PANEL_INNER_MARGIN, FLOATING_PANEL_MARGIN, getFloatingPanelMargin, getFloatingPanelOuterMargin, isFloatingTopEdgeExposed } from '../../../services/layout/browser/layoutService.js';
+import { ActivityBarPosition, IWorkbenchLayoutService, LayoutSettings, Parts, Position, FLOATING_PANEL_INNER_MARGIN, FLOATING_PANEL_MARGIN, getFloatingPanelMargin, getFloatingPanelOuterMargin, isFloatingActivityBarDetached, isFloatingTopEdgeExposed } from '../../../services/layout/browser/layoutService.js';
 import { IInstantiationService, ServicesAccessor } from '../../../../platform/instantiation/common/instantiation.js';
 import { DisposableStore, MutableDisposable } from '../../../../base/common/lifecycle.js';
 import { ToggleSidebarPositionAction, ToggleSidebarVisibilityAction } from '../../actions/layoutActions.js';
@@ -155,7 +155,7 @@ export class ActivitybarPart extends Part {
 
 		// The cluster perimeter on the window side, plus the rail's own lane beside the icon
 		// column, where the primary side bar meets it flush.
-		const lane = this.layoutService.isModernUICompact() ? ActivitybarPart.FLOATING_COMPACT_LANE : ActivitybarPart.FLOATING_LANE;
+		const lane = this.layoutService.isModernUICompact() ? ActivitybarPart.FLOATING_COMPACT_LANE : this.layoutService.getModernUILayoutMetrics().activityBarLane;
 		return getFloatingPanelOuterMargin(this.layoutService) + lane
 			+ (this.needsFloatingLeadingGap ? getFloatingPanelMargin(this.layoutService) : 0);
 	}
@@ -170,7 +170,7 @@ export class ActivitybarPart extends Part {
 	private get needsFloatingLeadingGap(): boolean {
 		return !this.layoutService.isModernUICompact()
 			&& this.layoutService.getSideBarPosition() === Position.RIGHT
-			&& !this.layoutService.isVisible(Parts.SIDEBAR_PART);
+			&& (!this.layoutService.isVisible(Parts.SIDEBAR_PART) || isFloatingActivityBarDetached(this.layoutService));
 	}
 
 	private readonly compositeBar = this._register(new MutableDisposable<PaneCompositeBar>());
@@ -202,7 +202,7 @@ export class ActivitybarPart extends Part {
 
 			// Floating panels changes the reserved left/bottom gutter (and therefore
 			// the fixed part width): signal the grid that the size constraint changed.
-			if (e.affectsConfiguration(LayoutSettings.MODERN_UI) || e.affectsConfiguration(LayoutSettings.MODERN_UI_DENSITY)) {
+			if (e.affectsConfiguration(LayoutSettings.MODERN_UI) || e.affectsConfiguration(LayoutSettings.MODERN_UI_DENSITY) || e.affectsConfiguration(LayoutSettings.MODERN_UI_LAYOUT)) {
 				this.updateCompactStyle();
 				this.recreateCompositeBar();
 				this._onDidChange.fire(undefined);
